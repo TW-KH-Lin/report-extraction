@@ -82,7 +82,7 @@ function selectedCheckbox(text, label, options) {
 
 function parseRecord(text, filename, sourceType) {
   const complaintNo = firstMatch(text, [
-    /Sartorius\s+complaint\s+(?:number|no\.?)\s*[:#]?\s*([A-Za-z0-9\-\/]+)/i,
+    /Complaint\s+(?:number|no\.?)\s*[:#]?\s*([A-Za-z0-9\-\/]+)/i,
     /\b(Comp-\d{7})\b/i,
     /\b(13\d{8})\b/
   ]);
@@ -100,16 +100,16 @@ function parseRecord(text, filename, sourceType) {
     /Report\s+date\s*:\s*([0-9./-]{8,10})/i
   ]);
   const problem = firstMatch(text, [
-    /Issue\s+description\s*[:#]?\s*([\s\S]{1,250}?)(?=\n(?:Sartorius\s+Criticality|Complaint\s+status|1\.|II\.|Date\s+Complaint))/i,
+    /Issue\s+description\s*[:#]?\s*([\s\S]{1,250}?)(?=\n(?:Criticality|Complaint\s+status|1\.|II\.|Date\s+Complaint))/i,
     /Customer\s+statement\s*[:#]?\s*[“"]?([\s\S]{1,250}?)(?=[”"]?\s*(?:Figure|Fig\.|A list|1\.2|$))/i,
     /Subject\s*:\s*(.{1,180})/i
   ]).replace(/^["“]|["”]$/g,"");
   const status = sourceType === "msg"
     ? "Ongoing – email only"
     : selectedCheckbox(text, "Complaint status", ["Confirmed","Not confirmed","Not conclusive"]);
-  const criticality = selectedCheckbox(text, "Sartorius Criticality", ["Critical","Major","Minor","Track&Trend"]);
+  const criticality = selectedCheckbox(text, "Criticality", ["Critical","Major","Minor","Track&Trend"]);
   const reproduced = selectedCheckbox(text, "Could the failure be reproduced", ["Yes","No"]);
-  const rootCause = selectedCheckbox(text, "Is root cause related to Sartorius", ["Yes","No"]);
+  const rootCause = selectedCheckbox(text, "root cause related", ["Yes","No"]);
   const mrfr = parseMrFr(text);
   const sourceGroup = sourceType === "msg" ? "Ongoing - Email" : "Final Reports";
 
@@ -129,7 +129,7 @@ function parseRecord(text, filename, sourceType) {
     finalRolls: mrfr.finals.join("; "),
     mrfrAreas: mrfr.areas.join("; "),
     failureReproduced: reproduced,
-    rootCauseSartorius: rootCause,
+    rootCauseRelated: rootCause,
     finalAssessment:"",
     warnings: warnings.join("; "),
     rawText:text.slice(0,30000)
@@ -207,7 +207,7 @@ function recordCard(r, index) {
       ${field("resultStatus","Result / Status",r.resultStatus)}
       ${field("criticality","Criticality",r.criticality)}
       ${field("failureReproduced","Failure Reproduced?",r.failureReproduced)}
-      ${field("rootCauseSartorius","Root Cause in Sartorius?",r.rootCauseSartorius)}
+      ${field("rootCauseRelated","Root Cause Related?",r.rootCauseRelated)}
       ${textarea("problem","Problem",r.problem,"wide")}
       ${textarea("finalAssessment","Final Assessment",r.finalAssessment,"wide")}
     </div>
@@ -432,7 +432,7 @@ $("extractBtn").onclick=async()=>{
           sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
           complaintNo:"", reportDate:"", customer:"", materialNo:"", productFamily:"",
           lot:"", problem:"", resultStatus:"", criticality:"", masterRolls:"",
-          finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseSartorius:"",
+          finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
           finalAssessment:"", warnings:`Extraction error: ${err.message}`, rawText:""
         });
       }
