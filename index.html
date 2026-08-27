@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Membrane Complaint Extractor</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Membrane Complaint Extractor</h1>
+      <p>Pure browser app: PDF / MSG / ZIP → review → update Excel → download.</p>
+    </div>
+    <span class="privacy">Files stay in your browser</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>1. Load your current Excel workbook</h2>
+      <p class="hint">Your workbook is not uploaded to a server. It is read locally by your browser.</p>
+      <input id="excelFile" type="file" accept=".xlsx" />
+      <div id="excelStatus" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>2. Add complaint files</h2>
+      <input id="complaintFiles" type="file" accept=".pdf,.msg,.zip" multiple />
+      <button id="extractBtn" class="primary">Extract key information</button>
+      <div id="extractStatus" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title-row">
+        <div>
+          <h2>3. Review extracted information</h2>
+          <p class="hint">Always review before updating Excel. PDF checkboxes and email threads can be ambiguous.</p>
+        </div>
+        <button id="clearBtn" class="secondary">Clear extracted rows</button>
+      </div>
+      <div id="records"></div>
+    </section>
+
+    <section class="panel">
+      <h2>4. Check existing lot history</h2>
+      <div class="history-controls">
+        <input id="historyLot" placeholder="Lot number" />
+        <button id="historyBtn" class="secondary">Search workbook</button>
+      </div>
+      <div id="historyResult"></div>
+    </section>
+
+    <section class="panel">
+      <h2>5. Update Excel</h2>
+      <p class="hint">
+        One complaint number remains one row. Multiple MR / FR values remain together in one cell.
+        Product-family sheets are rebuilt from all three categories and sorted by Problem.
+      </p>
+      <button id="buildBtn" class="primary">Build updated Excel</button>
+      <div id="buildStatus" class="status"></div>
+    </section>
+  </main>
+
+  <footer>
+    Product rules:
+    <strong>1UN95 → CN95</strong> ·
+    <strong>1UN14AR → CN140ub</strong> ·
+    <strong>1UN14ER → CN140</strong> ·
+    <strong>1UN11 → CN110</strong> ·
+    <strong>1UN18 → CN180</strong>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
