@@ -42,12 +42,12 @@ Do **not** put a workbook containing real complaint/customer information in the 
 Instead:
 1. host only these three web files;
 2. open the webpage;
-3. upload the current Excel workbook from your computer;
-4. upload complaint reports;
+3. optionally upload an existing Excel workbook from your computer;
+4. upload one or more complaint reports;
 5. review extracted information;
-6. click **Build updated Excel**.
+6. click **Create Excel file**.
 
-The updated Excel is generated locally in the browser and downloaded back to the user's computer.
+The Excel file is generated locally in the browser and downloaded back to the user's computer. If no workbook is selected, the app creates a new workbook from the reviewed report extractions.
 
 ## Current features
 

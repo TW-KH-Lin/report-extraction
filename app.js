@@ -752,15 +752,20 @@ function sortFamily(rows) {
 }
 
 async function buildUpdatedWorkbook() {
-  if (!workbookBuffer) throw new Error("Load the current Excel workbook first.");
   syncRecordsFromDom();
+  if (!records.length) throw new Error("Extract at least one complaint report first.");
   let wb;
-  try {
-    wb=await loadWorkbook(workbookBuffer.slice(0));
-    workbookMode="standard";
-  } catch (_) {
+  if (!workbookBuffer) {
     wb=new ExcelJS.Workbook();
-    workbookMode="reference-readonly";
+    workbookMode="new";
+  } else {
+    try {
+      wb=await loadWorkbook(workbookBuffer.slice(0));
+      workbookMode="standard";
+    } catch (_) {
+      wb=new ExcelJS.Workbook();
+      workbookMode="reference-readonly";
+    }
   }
 
   const categoryRows={};
@@ -923,14 +928,16 @@ $("buildBtn").onclick=async()=>{
     const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    a.href=url; a.download=workbookMode==="reference-readonly"
-      ?"Report_Extraction_New.xlsx":"Membrane_Complaints_Updated.xlsx";
+    a.href=url; a.download=workbookMode==="standard"
+      ?"Report_Extraction_Updated.xlsx":"Report_Extraction_New.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     $("buildStatus").className="status good";
-    $("buildStatus").textContent=workbookMode==="reference-readonly"
-      ?"New extracted workbook created. The reference workbook was not changed."
-      :"Updated workbook created and downloaded.";
+    $("buildStatus").textContent=workbookMode==="standard"
+      ?"Updated workbook created and downloaded."
+      :workbookMode==="reference-readonly"
+        ?"New extracted workbook created. The reference workbook was not changed."
+        :"New Excel workbook created and downloaded from the extracted reports.";
   } catch(err) {
     $("buildStatus").className="status bad";
     $("buildStatus").textContent=err.message;

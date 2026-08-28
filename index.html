@@ -20,8 +20,8 @@
 
   <main>
     <section class="panel">
-      <h2>1. Load your current Excel workbook</h2>
-      <p class="hint">Your workbook is not uploaded to a server. It is read locally by your browser.</p>
+      <h2>1. Load an existing Excel workbook (optional)</h2>
+      <p class="hint">Skip this step to create a brand-new Excel workbook. If selected, your workbook is read locally by your browser.</p>
       <input id="excelFile" type="file" accept=".xlsx" />
       <div id="excelStatus" class="status"></div>
     </section>
@@ -54,12 +54,13 @@
     </section>
 
     <section class="panel">
-      <h2>5. Update Excel</h2>
+      <h2>5. Create or update Excel</h2>
       <p class="hint">
         One complaint number remains one row. Multiple MR / FR values remain together in one cell.
-        Product-family sheets are rebuilt from all three categories, and detailed assays are written to Extracted Test Evidence.
+        Without an uploaded workbook, a new Excel file is created. Product-family sheets are rebuilt from all three categories,
+        and detailed assays are written to Extracted Test Evidence.
       </p>
-      <button id="buildBtn" class="primary">Build updated Excel</button>
+      <button id="buildBtn" class="primary">Create Excel file</button>
       <div id="buildStatus" class="status"></div>
     </section>
   </main>
@@ -73,6 +74,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=8"></script>
+  <script type="module" src="./app.js?v=9"></script>
 </body>
 </html>
