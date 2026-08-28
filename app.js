@@ -10,11 +10,24 @@ const FAMILY_SHEETS = ["CN95", "CN140ub", "CN140", "CN110", "CN180"];
 const CATEGORY_HEADERS = [
   "Lot","Product Family","Customer Company","Rolls Implicated","Samples Received",
   "Final Roll(s)","Master Roll(s)","MR-FR Area(s)",
-  "Complaint / Notification","Problem","Tests / Assays Applied","Result / Status","Material No.","Report Date"
+  "Complaint / Notification","Problem","Customer Reported Failure","Tests / Assays Applied",
+  "Result / Status","Criticality","Failure Reproduced?","Root Cause in Process?",
+  "Product Description","Coordinator","Similar Events Same Category?","Containment Necessary?",
+  "Corrective / Preventive Action Necessary?","Root Cause Analysis Conclusion","Problem Description Check",
+  "Final Assessment / Root Cause","Final Scope / Decision",
+  "Sample Details","Data Quality / Notes","Material No.","Report Date"
 ];
 const FAMILY_HEADERS = ["Source Group", ...CATEGORY_HEADERS];
+const EVIDENCE_SHEET = "Extracted Test Evidence";
+const EVIDENCE_HEADERS = [
+  "Complaint / Notification","Lot","Material No.","Product Family","Units Implicated","Samples Received",
+  "Problem","Customer Reported Failure","Complaint Status","Sample Source","Sample ID","Standard Test",
+  "Standard Purpose","Standard Method","Result (Source)","Outcome","Within Spec?","Issue Observed?",
+  "Source Page","Case-specific Conditions / Source Detail","Source File"
+];
 
 let workbookBuffer = null;
+let workbookMode = "standard";
 let records = [];
 
 const $ = (id) => document.getElementById(id);
@@ -40,18 +53,81 @@ function firstMatch(text, regexes) {
   return "";
 }
 
+function cleanBlock(value="") {
+  return String(value)
+    .replace(/--- Page \d+ ---/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[:\s“”"']+|[:\s“”"']+$/g, "")
+    .trim();
+}
+
+function sectionMatch(text, headingPattern, nextHeadingPattern, maxLength=2400) {
+  const re = new RegExp(
+    `${headingPattern}\\s*([\\s\\S]{1,${maxLength}}?)(?=${nextHeadingPattern}|$)`,
+    "i"
+  );
+  return cleanBlock(text.match(re)?.[1] || "");
+}
+
+function customerCompanyFromHeader(text) {
+  const explicit = firstMatch(text, [
+    /(?:Customer\s+(?:company|organization|account)|Company\s+name)\s*[:#]?\s*([^\n]{2,160})/i
+  ]);
+  if (explicit) return explicit;
+  const lines = text.split(/\n/).map(x=>x.trim()).filter(Boolean);
+  const emailIndex = lines.findIndex(line => /@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(line));
+  if (emailIndex >= 0) {
+    for (let i=emailIndex+1; i<Math.min(emailIndex+4, lines.length); i++) {
+      const line=lines[i];
+      if (/^(?:\d|Report\s+date|Complaint\s+information)/i.test(line)) continue;
+      if (/@/.test(line)) continue;
+      return line.replace(/\b([A-Za-z]{5,})\s+([a-z])\b/g,"$1$2").replace(/\s{2,}.*$/, "").trim();
+    }
+  }
+  return firstMatch(text, [
+    /\n([^\n]*(?:Co\.?|Ltd\.?|Inc\.?|LLC|GmbH|Corporation|Company|Biopharm|Biotechnology)[^\n]*)/i
+  ]);
+}
+
+function coordinatorFromText(text) {
+  const raw=firstMatch(text, [
+    /Written\s+by\s*:\s*(?:Reviewed\s+by\s*:)?\s*\n\s*([A-Z][A-Za-zÀ-ÿ'’-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’-]+){1,3})/i,
+    /\n\s*([A-Z][A-Za-zÀ-ÿ'’-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’-]+){1,3})\s*\n\s*Quality\s+Professional/i
+  ]);
+  const parts=raw.split(/\s+/).filter(Boolean);
+  return parts.length>=4 ? parts.slice(0,2).join(" ") : raw;
+}
+
+function validateProblemAgainstRootCause(problem, customerFailure, rootCauseConclusion) {
+  if (!rootCauseConclusion) return "Not checked - root-cause conclusion not extracted";
+  const stop = new Set([
+    "about","after","against","although","been","being","complaint","conclusion","could","failure",
+    "from","have","identified","issue","most","process","product","related","report","root","sample",
+    "that","their","there","these","this","those","through","were","which","within","with"
+  ]);
+  const tokens = value => new Set((String(value).toLowerCase().match(/[a-z]{4,}/g)||[])
+    .filter(x=>!stop.has(x))
+    .map(x=>x.endsWith("ing")?x.slice(0,-3):x.endsWith("ed")?x.slice(0,-2):x.endsWith("s")?x.slice(0,-1):x));
+  const problemTokens=tokens(`${problem} ${customerFailure}`);
+  const rootTokens=tokens(rootCauseConclusion);
+  const overlap=[...problemTokens].filter(x=>rootTokens.has(x));
+  if (overlap.length>=2) return `Consistent with root-cause conclusion (${overlap.slice(0,4).join(", ")})`;
+  if (overlap.length===1) return `Broad match - review wording (${overlap[0]})`;
+  return "Potential mismatch - review problem description against root-cause conclusion";
+}
+
 function parseMrFr(text) {
   const pairs = [];
-  const re = /\bMR-FR\s*:?\s*([0-9]+(?:\/[0-9]+)?)-([0-9]+)\b/gi;
+  const re = /\bMR\s*-\s*FR\s*:?\s*([0-9]+(?:\s*\/\s*[0-9]+)?)\s*-\s*([0-9]+)\b/gi;
   let m;
   while ((m = re.exec(text))) {
     const key = `${m[1]}-${m[2]}`;
     if (!pairs.some(p => p.key === key)) pairs.push({ key, master:m[1], final:m[2] });
   }
-  const listRe = /MR-FR\s*:?\s*((?:\d+(?:\/\d+)?-\d+)(?:\s*[,;]\s*\d+(?:\/\d+)?-\d+)+)/gi;
+  const listRe = /MR\s*-\s*FR\s*:?\s*((?:\d+(?:\s*\/\s*\d+)?\s*-\s*\d+)(?:\s*[,;]\s*\d+(?:\s*\/\s*\d+)?\s*-\s*\d+)+)/gi;
   while ((m = listRe.exec(text))) {
     for (const part of m[1].split(/[,;]/)) {
-      const p = part.trim().match(/^(\d+(?:\/\d+)?)-(\d+)$/);
+      const p = part.trim().match(/^(\d+(?:\s*\/\s*\d+)?)\s*-\s*(\d+)$/);
       if (p) {
         const key = `${p[1]}-${p[2]}`;
         if (!pairs.some(x => x.key === key)) pairs.push({key, master:p[1], final:p[2]});
@@ -63,7 +139,7 @@ function parseMrFr(text) {
   const areas = pairs.map(p=>`MR-FR${p.master}-${p.final}`);
 
   if (!masters.length) {
-    const stripped = text.replace(/MR-FR\s*\d+(?:\/\d+)?-\d+/gi,"");
+    const stripped = text.replace(/MR\s*-\s*FR\s*\d+(?:\s*\/\s*\d+)?\s*-\s*\d+/gi,"");
     const rollLists = [...stripped.matchAll(/\bMR(?:s|[\u00B4'\u2019]s)?\s*:?\s*((?:\d+\s*(?:,|and|&)\s*)+\d+)/gi)];
     for (const match of rollLists) {
       masters.push(...match[1].match(/\d+/g) || []);
@@ -78,9 +154,10 @@ function parseMrFr(text) {
 }
 
 function selectedCheckbox(text, label, options) {
-  const i = text.toLowerCase().indexOf(label.toLowerCase());
-  if (i < 0) return "";
-  const win = text.slice(i, i + 350);
+  const labelPattern=label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s+/g,"\\s+");
+  const labelMatch=text.match(new RegExp(labelPattern,"i"));
+  if (!labelMatch || labelMatch.index===undefined) return "";
+  const win = text.slice(labelMatch.index, labelMatch.index + 350);
   for (const option of options) {
     const escaped = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (new RegExp(`(?:☒|☑|■|\\bX\\b)\\s*${escaped}`, "i").test(win)) return option;
@@ -90,19 +167,98 @@ function selectedCheckbox(text, label, options) {
 
 function extractAssays(text) {
   const assays = [];
+  const hasFlowMeasurement = /Capillary\s+Flow\s+Time\s*#|could\s+not\s+be\s+measured\s+against\s+specification/i.test(text);
+  const hasInProcessReview = /Review\s+in[- ]process\s+data\s+of\s+capillary\s+flow\s+time/i.test(text);
+  if (hasFlowMeasurement) assays.push("Capillary flow time");
+  else if (hasInProcessReview) assays.push("In-process data review");
   if (/Phenol\s+red\s+buffer\s+line\s+test/i.test(text)) {
     assays.push("Phenol red buffer line test");
   }
-  const hasProteinBinding = /Protein\s+(?:binding\s+capacity|lines?)/i.test(text);
-  const hasLineMorphology = /line\s+morphology/i.test(text);
-  if (hasProteinBinding && hasLineMorphology) {
-    let label = "Protein line morphology and binding capacity";
-    if (/SyproRuby/i.test(text) && /image\s+analysis/i.test(text)) {
-      label += " (SyproRuby staining and image analysis)";
-    }
-    assays.push(label);
+  if (/Protein\s+(?:binding\s+(?:assay|capacity)|lines?)/i.test(text)) {
+    assays.push("Protein binding assay");
   }
   return assays.join("; ");
+}
+
+function sourcePageFor(text, phrase) {
+  const i=text.toLowerCase().indexOf(phrase.toLowerCase());
+  if (i<0) return "";
+  const before=text.slice(0,i);
+  const pages=[...before.matchAll(/--- Page (\d+) ---/g)];
+  return pages.length ? `p.${pages.at(-1)[1]}` : "";
+}
+
+function sourcePageRange(text, phrases) {
+  const pages=phrases.map(x=>sourcePageFor(text,x)).filter(Boolean).map(x=>Number(x.replace("p.","")));
+  if (!pages.length) return "";
+  const first=Math.min(...pages), last=Math.max(...pages);
+  return first===last?`p.${first}`:`p.${first}-${last}`;
+}
+
+function extractTestEvidence(text) {
+  const tests=[];
+  const rollInfo=parseMrFr(text);
+  const retainIds=rollInfo.masters.map(x=>`MR${x}`).join("; ");
+  const returnedIds=firstMatch(text, [
+    /returned\s+\d+\s+(?:pieces|samples)[\s\S]{0,180}?\(([#\d\s,;and]+)(?:identification|customer|\))/i
+  ]).replace(/\s+/g," ").replace(/\s*,\s*/g,"; ").replace(/\s+and\s+/gi,"; ");
+  if (/capillary\s+flow\s+time/i.test(text)) {
+    const result=firstMatch(text, [
+      /(The\s+capillary\s+flow\s+time[\s\S]{5,420}?)(?=As\s+the\s+samples|Complaint\s+number|--- Page|$)/i,
+      /(in-process[- ]data[\s\S]{5,260}?within\s+specification)/i
+    ]);
+    tests.push({
+      name:/Capillary\s+Flow\s+Time\s*#|could\s+not\s+be\s+measured\s+against\s+specification/i.test(text)
+        ?"Capillary flow time":"In-process data review",
+      purpose:"Flow performance / specification check",
+      sampleSource:"Retain sample",
+      sampleId:retainIds,
+      method:"Measure capillary flow time over 40 mm using the report-defined liquid/conditions and compare with specification/reference.",
+      result:cleanBlock(result),
+      outcome:/within\s+specification/i.test(result)?"Pass":"Review required",
+      withinSpec:/within\s+specification/i.test(result)?"Yes":"",
+      issueObserved:"No",
+      sourcePage:sourcePageFor(text,"capillary flow time"),
+      conditions:/65\s+to\s+115\s+sec\s*\/\s*40\s*mm/i.test(text)
+        ?"Specification 65-115 sec/40 mm; customer samples were post-use and not measurable against specification":""
+    });
+  }
+  if (/Phenol\s+red\s+buffer\s+line\s+test/i.test(text)) {
+    const result=firstMatch(text, [
+      /(The\s+printed\s+buffer\s+lines[\s\S]{5,360}?)(?=Protein\s+binding|Complaint\s+number|--- Page|$)/i,
+      /(Phenol\s+red\s+buffer\s+lines[\s\S]{5,240}?(?:irregularities|disruptions|reference))/i
+    ]);
+    const issue=/irregularit|interrupt|disrupt/i.test(result) && !/without\s+(?:any\s+)?(?:irregularit|interrupt|disrupt)/i.test(result);
+    tests.push({
+      name:"Phenol red line test", purpose:"Line quality / wetting", sampleSource:"Retain sample",
+      sampleId:retainIds,
+      method:"Print a phenol-red buffer line on the membrane and compare continuity, width, shape and wetting with reference.",
+      result:cleanBlock(result),
+      outcome:issue?"Minor irregularity / review":"Pass", withinSpec:issue?"":"Yes",
+      issueObserved:issue?"Partial":"No", sourcePage:sourcePageFor(text,"Phenol red buffer line test"),
+      conditions:/1\s+or\s+2\s*[μµu]l\s*\/\s*cm/i.test(text)?"Phenol red buffer printed at 1 or 2 µl/cm":""
+    });
+  }
+  if (/Protein\s+(?:binding\s+(?:assay|capacity)|lines?)/i.test(text)) {
+    const normal=firstMatch(text, [
+      /(The\s+protein\s+lines[\s\S]{5,260}?(?:reference\s+membrane|without\s+any\s+disruptions))/i
+    ]);
+    const issues=firstMatch(text, [
+      /(The\s+following\s+issues\s+were\s+identified[\s\S]{5,720}?)(?=No\s+irregularities|1\.4\.|Manufacturing\s+documentation|--- Page|$)/i
+    ]);
+    const result=cleanBlock([normal,issues].filter(Boolean).join(" "));
+    tests.push({
+      name:"Protein binding assay", purpose:"Binding capacity / line morphology",
+      sampleSource:returnedIds?"Customer return + retain":"Retain sample",
+      sampleId:[returnedIds?`Return pieces ${returnedIds}`:"",retainIds?`Retain ${retainIds}`:""].filter(Boolean).join("; "),
+      method:"Print protein line(s), stain with SyproRuby, and evaluate line morphology and binding/signal versus reference.",
+      result,
+      outcome:issues?"Issue reproduced / mixed":"Pass", withinSpec:issues?"Functionality retained":"Yes",
+      issueObserved:issues?"Yes":"No", sourcePage:sourcePageRange(text,["Protein binding","The following issues were identified"]),
+      conditions:/0\.5\s+to\s+4\s+mg\s*\/\s*ml/i.test(text)?"Protein 0.5-4 mg/ml; 1 µl/cm; SyproRuby staining and image analysis":""
+    });
+  }
+  return tests;
 }
 
 function parseRecord(text, filename, sourceType) {
@@ -119,6 +275,9 @@ function parseRecord(text, filename, sourceType) {
     /\b(1UN(?:95|14|11|18)[A-Z0-9]+)\b/i
   ]);
   material = material.replace(/\s+/g, "");
+  const productDescription = firstMatch(text, [
+    /Product\s+description\s*[:#]?\s*([\s\S]{3,220}?)(?=\s+Total\s+units\s+implicated|\s+Number\s+of\s+samples|\n)/i
+  ]);
   const lot = firstMatch(text, [
     /Lot\s+number\s*[:#]?\s*([0-9]{7,9})/i,
     /\blot\s+(?:number\s*)?[:#]?\s*([0-9]{7,9})\b/i
@@ -129,10 +288,7 @@ function parseRecord(text, filename, sourceType) {
     /(?:Report\s+date|Date\s+of\s+(?:the\s+)?report|Report\s+(?:issued|created)\s+(?:on)?)\s*[:#]?\s*([0-9]{1,4}\s*[-./]\s*[0-9]{1,2}\s*[-./]\s*[0-9]{1,4})/i
   ]);
   reportDate = reportDate.replace(/\s*([./-])\s*/g, "$1");
-  const customerCompany = firstMatch(text, [
-    /(?:Customer\s+(?:company|organization|account)|Company\s+name)\s*[:#]?\s*([^\n]{2,160})/i,
-    /\n[^\n]*@[^\n]*\n([^\n]*(?:Co\.?|Ltd\.?|Inc\.?|LLC|GmbH|Corporation|Company|Biopharm)[^\n]*)/i
-  ]);
+  const customerCompany = customerCompanyFromHeader(text);
   const rollsImplicated = firstMatch(text, [
     /Total\s+units\s+implicated\s*[:#]?\s*(\d+)\s*rolls?/i,
     /(?:Number|Total)\s+of\s+rolls?\s+implicated\s*[:#]?\s*(\d+)/i
@@ -141,6 +297,15 @@ function parseRecord(text, filename, sourceType) {
     /Number\s+of\s+samples\s+received\s*[:#]?\s*(\d+)/i,
     /Samples\s+received\s*[:#]?\s*(\d+)/i
   ]);
+  let sampleDetails = firstMatch(text, [
+    /Number\s+of\s+samples\s+received\s*[:#]?\s*([\s\S]{1,100}?)(?=\s+Date\s+(?:samples|complaint)|\s+Issue\s+description|\n)/i
+  ]);
+  const receivedIdentifiers=firstMatch(text, [
+    /returned\s+\d+\s+(?:pieces|samples)[\s\S]{0,180}?\(([#\d\s,;and]+)(?:identification|customer|\))/i
+  ]).replace(/\s+/g," ");
+  if (receivedIdentifiers && !sampleDetails.includes(receivedIdentifiers)) {
+    sampleDetails=cleanBlock(`${sampleDetails} (${receivedIdentifiers})`);
+  }
   const problem = firstMatch(text, [
     /(?:Issue|Problem|Complaint)\s+description\s*[:#]?\s*([\s\S]{5,600}?)(?=\s+(?:(?:[A-Za-z]+\s+)?Criticality|Complaint\s+status|Date\s+Complaint|Could\s+the\s+failure|Root\s+cause|Investigation|Final\s+assessment|Conclusion|Figure|Fig\.)\b|$)/i,
     /Customer\s+(?:statement|complaint)\s*[:#]?\s*[“"]?([\s\S]{5,600}?)(?=[”"]?\s*(?:Criticality|Complaint\s+status|Figure|Fig\.|Investigation|Conclusion|$))/i,
@@ -156,8 +321,38 @@ function parseRecord(text, filename, sourceType) {
   const rootCause = selectedCheckbox(text, "Root cause identified within", ["Yes","No"])
     || selectedCheckbox(text, "root cause related", ["Yes","No"]);
   const assaysApplied = extractAssays(text);
+  const testEvidence = extractTestEvidence(text);
   const mrfr = parseMrFr(text);
   const sourceGroup = sourceType === "msg" ? "Ongoing - Email" : "Final Reports";
+  const customerReportedFailure = cleanBlock(firstMatch(text, [
+    /received\s+a\s+complaint\s+with\s+the\s+following\s+statement\s*:\s*[“"]?([\s\S]{3,500}?)(?=\s*(?:Picture\s*s|Pictures|Figure|1\.2\.|Criticality|--- Page))/i,
+    /Customer\s+statement[\s\S]{0,420}?[“"]([^”"]{3,500})[”"]/i
+  ]).replace(/\s*-\s*/g,"-").replace(/[“”"]+/g,""));
+  const rootCauseConclusion = sectionMatch(
+    text,
+    "Conclusion\\s+of\\s+the\\s+root\\s+cause\\s+analysis\\s*",
+    "(?:4\\.\\s*Correction|4\\.\\s*Conclusion|5\\.\\s*Conclusion|Corrective\\s*/\\s*Preventive|--- Page)",
+    2600
+  );
+  const problemValidation = validateProblemAgainstRootCause(problem, customerReportedFailure, rootCauseConclusion);
+  const finalAssessment = sectionMatch(
+    text,
+    "(?:^|\\n)\\s*(?:4|5)\\.\\s*Conclusion\\s*",
+    "(?:Best\\s+regards|Written\\s+by|Complaint\\s+number|--- Page)",
+    2200
+  );
+  const similarEvents = selectedCheckbox(text, "Similar events reported", ["Yes","No"]);
+  const containmentNecessary = selectedCheckbox(text, "Containment action necessary", ["Yes","No"]);
+  const correctiveActionNecessary = selectedCheckbox(text, "Corrective / Preventive action necessary", ["Yes","No"])
+    || selectedCheckbox(text, "Corrective / Preventive actions necessary", ["Yes","No"]);
+  const finalScope = firstMatch(text, [
+    /(The\s+scope\s+of\s+failure\s+is\s+concluded[\s\S]{3,240}?\.)(?=\s|$)/i,
+    /(Complaint\s+(?:not\s+confirmed|confirmed)[\s\S]{3,180}?(?:monitoring|claimed\s+units)\.?)/i
+  ]);
+  const coordinator = coordinatorFromText(text);
+  const reportVersion = firstMatch(text, [/Report\s+version\s*[:#]?\s*([A-Z0-9.-]+)/i]);
+  const complaintRegisteredDate = firstMatch(text, [/Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}[-./ ][A-Za-z0-9]{2,9}[-./ ][0-9]{2,4})/i]);
+  const samplesReceivedDate = firstMatch(text, [/Date\s+samples\s+received\s*[:#]?\s*([A-Z0-9][A-Z0-9 .\/-]{1,30})/i]);
 
   const warnings = [];
   if (!complaintNo) warnings.push("Complaint number not extracted");
@@ -166,6 +361,8 @@ function parseRecord(text, filename, sourceType) {
   if (!problem) warnings.push("Problem not extracted");
   if (!reportDate) warnings.push("Report date not extracted");
   if (!customerCompany) warnings.push("Customer company not extracted");
+  if (!customerReportedFailure) warnings.push("Customer-reported failure not extracted");
+  if (problemValidation.startsWith("Potential mismatch")) warnings.push(problemValidation);
   if (sourceType === "pdf" && text.replace(/\s/g, "").length < 80) {
     warnings.push("This PDF has little or no selectable text; OCR may be required");
   }
@@ -174,14 +371,18 @@ function parseRecord(text, filename, sourceType) {
   return {
     sourceFile: filename, sourceType, sourceGroup,
     complaintNo, reportDate, customerCompany, rollsImplicated, samplesReceived,
-    materialNo: material, productFamily: productFamily(material), lot,
+    sampleDetails, materialNo: material, productDescription,
+    productFamily: productFamily(material), lot,
     problem, assaysApplied, resultStatus:status, criticality,
     masterRolls: mrfr.masters.join("; "),
     finalRolls: mrfr.finals.join("; "),
     mrfrAreas: mrfr.areas.join("; "),
     failureReproduced: reproduced,
     rootCauseRelated: rootCause,
-    finalAssessment:"",
+    customerReportedFailure, coordinator, reportVersion,
+    complaintRegisteredDate, samplesReceivedDate,
+    similarEvents, containmentNecessary, correctiveActionNecessary,
+    rootCauseConclusion, problemValidation, finalAssessment, finalScope, testEvidence,
     warnings: warnings.join("; "),
     rawText:text.slice(0,30000)
   };
@@ -211,7 +412,7 @@ async function pdfText(arrayBuffer) {
       if (Number.isFinite(y)) lastY = y;
     }
     if (line.length) lines.push(line.join(" ").trim());
-    pages.push(lines.filter(Boolean).join("\n"));
+    pages.push(`--- Page ${n} ---\n${lines.filter(Boolean).join("\n")}`);
   }
   return pages.join("\n");
 }
@@ -270,8 +471,10 @@ function recordCard(r, index) {
       ${field("customerCompany","Customer Company",r.customerCompany,"wide")}
       ${field("rollsImplicated","Rolls Implicated",r.rollsImplicated)}
       ${field("samplesReceived","Samples Received",r.samplesReceived)}
+      ${field("sampleDetails","Sample Details",r.sampleDetails,"wide")}
       ${field("lot","Lot",r.lot)}
       ${field("materialNo","Material No.",r.materialNo)}
+      ${field("productDescription","Product Description",r.productDescription,"wide")}
       ${fieldSelect("productFamily","Product Family",famOptions)}
       ${field("masterRolls","Master Roll(s)",r.masterRolls)}
       ${field("finalRolls","Final Roll(s)",r.finalRolls)}
@@ -281,12 +484,32 @@ function recordCard(r, index) {
       ${field("failureReproduced","Failure Reproduced?",r.failureReproduced)}
       ${field("rootCauseRelated","Root Cause Related?",r.rootCauseRelated)}
       ${textarea("problem","Problem",r.problem,"wide")}
+      ${textarea("customerReportedFailure","Customer Reported Failure",r.customerReportedFailure,"wide")}
       ${textarea("assaysApplied","Tests / Assays Applied",r.assaysApplied,"wide")}
+      ${field("coordinator","Coordinator / Written By",r.coordinator)}
+      ${field("similarEvents","Similar Events Same Category?",r.similarEvents)}
+      ${field("containmentNecessary","Containment Necessary?",r.containmentNecessary)}
+      ${field("correctiveActionNecessary","Corrective / Preventive Action Necessary?",r.correctiveActionNecessary)}
+      ${textarea("rootCauseConclusion","Conclusion of Root Cause Analysis",r.rootCauseConclusion,"wide")}
+      ${field("problemValidation","Problem Description Check",r.problemValidation,"wide")}
       ${textarea("finalAssessment","Final Assessment",r.finalAssessment,"wide")}
+      ${textarea("finalScope","Final Scope / Decision",r.finalScope,"wide")}
     </div>
+    ${testEvidenceTable(r.testEvidence)}
     ${r.warnings ? `<div class="warning">${esc(r.warnings)}</div>` : ""}
     <details><summary>Raw extracted text</summary><pre>${esc(r.rawText)}</pre></details>
   </div>`;
+}
+function testEvidenceTable(tests=[]) {
+  if (!tests.length) return "";
+  return `<div class="test-evidence"><h3>Structured test evidence</h3><div class="table-scroll"><table><thead><tr>
+    <th>Standard Test</th><th>Sample Source</th><th>Sample ID</th><th>Purpose</th><th>Method</th><th>Result</th>
+    <th>Outcome</th><th>Within Spec?</th><th>Issue Observed?</th><th>Source Page</th><th>Conditions</th>
+  </tr></thead><tbody>${tests.map(t=>`<tr>
+    <td>${esc(t.name)}</td><td>${esc(t.sampleSource)}</td><td>${esc(t.sampleId)}</td><td>${esc(t.purpose)}</td>
+    <td>${esc(t.method)}</td><td>${esc(t.result)}</td><td>${esc(t.outcome)}</td><td>${esc(t.withinSpec)}</td>
+    <td>${esc(t.issueObserved)}</td><td>${esc(t.sourcePage)}</td><td>${esc(t.conditions)}</td>
+  </tr>`).join("")}</tbody></table></div></div>`;
 }
 function field(name,label,value="",cls="") {
   return `<div class="field ${cls}"><label>${label}</label><input data-field="${name}" value="${esc(value)}"></div>`;
@@ -333,6 +556,70 @@ async function loadWorkbook(buffer) {
   return wb;
 }
 
+async function isValidXlsxContainer(buffer) {
+  try {
+    const zip=await JSZip.loadAsync(buffer.slice(0));
+    return Boolean(zip.file("xl/workbook.xml") && zip.file("[Content_Types].xml"));
+  } catch (_) {
+    return false;
+  }
+}
+
+async function readReferenceWorkbook(buffer) {
+  const zip=await JSZip.loadAsync(buffer.slice(0));
+  const parse=async path=>new DOMParser().parseFromString(await zip.file(path).async("string"),"application/xml");
+  const workbook=await parse("xl/workbook.xml");
+  const rels=await parse("xl/_rels/workbook.xml.rels");
+  const relMap={};
+  for (const rel of rels.getElementsByTagNameNS("*","Relationship")) relMap[rel.getAttribute("Id")]=rel.getAttribute("Target");
+  const shared=[];
+  if (zip.file("xl/sharedStrings.xml")) {
+    const sharedDoc=await parse("xl/sharedStrings.xml");
+    for (const si of sharedDoc.getElementsByTagNameNS("*","si")) {
+      shared.push([...si.getElementsByTagNameNS("*","t")].map(x=>x.textContent||"").join(""));
+    }
+  }
+  const sheets={};
+  for (const sheet of workbook.getElementsByTagNameNS("*","sheet")) {
+    const name=sheet.getAttribute("name");
+    const rid=sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships","id")
+      || sheet.getAttribute("r:id");
+    let target=(relMap[rid]||"").replace(/^\//,"");
+    if (!target.startsWith("xl/")) target=`xl/${target}`;
+    if (!zip.file(target)) continue;
+    const doc=await parse(target);
+    const rows=[];
+    for (const row of doc.getElementsByTagNameNS("*","row")) {
+      const values=[];
+      for (const cell of row.getElementsByTagNameNS("*","c")) {
+        const ref=cell.getAttribute("r")||"A1";
+        const letters=ref.match(/[A-Z]+/)?.[0]||"A";
+        let col=0; for (const ch of letters) col=col*26+ch.charCodeAt(0)-64; col-=1;
+        const type=cell.getAttribute("t");
+        let value="";
+        if (type==="inlineStr") value=[...cell.getElementsByTagNameNS("*","t")].map(x=>x.textContent||"").join("");
+        else value=cell.getElementsByTagNameNS("*","v")[0]?.textContent||"";
+        if (type==="s" && value!=="") value=shared[Number(value)]??value;
+        values[col]=value;
+      }
+      if (values.some(x=>x!==undefined && x!=="")) rows[Number(row.getAttribute("r")||rows.length+1)]=values;
+    }
+    sheets[name]=rows;
+  }
+  return sheets;
+}
+
+function objectsFromReferenceRows(rows, headerRow) {
+  const headers=rows?.[headerRow]||[];
+  const out=[];
+  for (let r=headerRow+1;r<(rows?.length||0);r++) {
+    const values=rows[r]||[];
+    if (!values.some(x=>x!==undefined && x!=="")) continue;
+    const obj={}; headers.forEach((h,i)=>{if(h)obj[h]=values[i]??"";}); out.push(obj);
+  }
+  return out;
+}
+
 function sheetRows(ws) {
   if (!ws || ws.rowCount < 2) return [];
   const headers = ws.getRow(1).values.slice(1).map(v=>String(v||""));
@@ -360,9 +647,18 @@ function clearSheet(ws) {
 
 function formatSheet(ws, hasSource=false) {
   ws.views=[{state:"frozen", xSplit:2, ySplit:1}];
-  const widths = hasSource
-    ? [20,13,15,28,16,16,18,20,36,24,46,40,26,24,14]
-    : [13,15,28,16,16,18,20,36,24,46,40,26,24,14];
+  const widthByHeader={
+    "Source Group":20,"Lot":13,"Product Family":15,"Customer Company":28,"Rolls Implicated":16,
+    "Samples Received":16,"Final Roll(s)":18,"Master Roll(s)":18,"MR-FR Area(s)":28,
+    "Complaint / Notification":24,"Problem":34,"Customer Reported Failure":42,"Tests / Assays Applied":38,
+    "Result / Status":20,"Criticality":14,"Failure Reproduced?":18,"Root Cause in Process?":20,
+    "Product Description":36,"Coordinator":20,"Final Assessment / Root Cause":48,"Final Scope / Decision":38,
+    "Data Quality / Notes":38,"Material No.":24,"Report Date":16,"Sample Source":22,"Sample ID":28,
+    "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
+    "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
+    "Source File":34
+  };
+  const widths=ws.getRow(1).values.slice(1).map(h=>widthByHeader[String(h||"")]||20);
   ws.columns.forEach((c,i)=>c.width=widths[i]||18);
   const header=ws.getRow(1);
   header.height=25;
@@ -394,10 +690,34 @@ function recordToCategoryRow(r) {
     "Rolls Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
     "Final Roll(s)":r.finalRolls||"", "Master Roll(s)":r.masterRolls||"",
     "MR-FR Area(s)":r.mrfrAreas||"", "Complaint / Notification":r.complaintNo||"",
-    "Problem":r.problem||"", "Tests / Assays Applied":r.assaysApplied||"",
-    "Result / Status":r.resultStatus||"",
+    "Problem":r.problem||"", "Customer Reported Failure":r.customerReportedFailure||"",
+    "Tests / Assays Applied":r.assaysApplied||"", "Result / Status":r.resultStatus||"",
+    "Criticality":r.criticality||"", "Failure Reproduced?":r.failureReproduced||"",
+    "Root Cause in Process?":r.rootCauseRelated||"",
+    "Product Description":r.productDescription||"", "Coordinator":r.coordinator||"",
+    "Similar Events Same Category?":r.similarEvents||"",
+    "Containment Necessary?":r.containmentNecessary||"",
+    "Corrective / Preventive Action Necessary?":r.correctiveActionNecessary||"",
+    "Root Cause Analysis Conclusion":r.rootCauseConclusion||"",
+    "Problem Description Check":r.problemValidation||"",
+    "Final Assessment / Root Cause":r.finalAssessment||"", "Final Scope / Decision":r.finalScope||"",
+    "Sample Details":r.sampleDetails||"", "Data Quality / Notes":r.warnings||"",
     "Material No.":r.materialNo||"", "Report Date":r.reportDate||""
   };
+}
+
+function recordToEvidenceRows(r) {
+  const fam=productFamily(r.materialNo)||r.productFamily||"";
+  return (r.testEvidence||[]).map(t=>({
+    "Complaint / Notification":r.complaintNo||"", "Lot":r.lot||"", "Material No.":r.materialNo||"",
+    "Product Family":fam, "Units Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
+    "Problem":r.problem||"", "Customer Reported Failure":r.customerReportedFailure||"",
+    "Complaint Status":r.resultStatus||"", "Sample Source":t.sampleSource||"", "Sample ID":t.sampleId||"",
+    "Standard Test":t.name||"", "Standard Purpose":t.purpose||"", "Standard Method":t.method||"",
+    "Result (Source)":t.result||"", "Outcome":t.outcome||"", "Within Spec?":t.withinSpec||"",
+    "Issue Observed?":t.issueObserved||"", "Source Page":t.sourcePage||"",
+    "Case-specific Conditions / Source Detail":t.conditions||"", "Source File":r.sourceFile||""
+  }));
 }
 
 function sortCategory(rows) {
@@ -418,7 +738,14 @@ function sortFamily(rows) {
 async function buildUpdatedWorkbook() {
   if (!workbookBuffer) throw new Error("Load the current Excel workbook first.");
   syncRecordsFromDom();
-  const wb = await loadWorkbook(workbookBuffer);
+  let wb;
+  try {
+    wb=await loadWorkbook(workbookBuffer.slice(0));
+    workbookMode="standard";
+  } catch (_) {
+    wb=new ExcelJS.Workbook();
+    workbookMode="reference-readonly";
+  }
 
   const categoryRows={};
   for (const name of CATEGORY_SHEETS) categoryRows[name]=sheetRows(ensureSheet(wb,name));
@@ -437,6 +764,15 @@ async function buildUpdatedWorkbook() {
     const ws=ensureSheet(wb,name);
     writeSheet(ws,CATEGORY_HEADERS,sortCategory(categoryRows[name]),false);
   }
+
+  let evidenceRows=sheetRows(ensureSheet(wb,EVIDENCE_SHEET));
+  for (const r of records) {
+    const id=normalizeId(r.complaintNo);
+    if (!id) continue;
+    evidenceRows=evidenceRows.filter(x=>normalizeId(x["Complaint / Notification"])!==id);
+    evidenceRows.push(...recordToEvidenceRows(r));
+  }
+  writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
 
   const familyRows=Object.fromEntries(FAMILY_SHEETS.map(f=>[f,[]]));
   const labels={"Final Reports":"Final Report","Ongoing - Email":"Ongoing - Email","Not in Detail Excel":"Not in Detail Excel"};
@@ -459,12 +795,32 @@ async function buildUpdatedWorkbook() {
 
 async function searchHistory(lot) {
   if (!workbookBuffer) throw new Error("Load the current Excel workbook first.");
-  const wb=await loadWorkbook(workbookBuffer);
   const found=[];
-  for (const group of CATEGORY_SHEETS) {
-    const ws=wb.getWorksheet(group);
-    for (const row of sheetRows(ws)) {
-      if (String(row["Lot"]||"").trim()===String(lot||"").trim()) found.push({"Source Group":group,...row});
+  try {
+    const wb=await loadWorkbook(workbookBuffer.slice(0));
+    for (const group of CATEGORY_SHEETS) {
+      const ws=wb.getWorksheet(group);
+      for (const row of sheetRows(ws)) {
+        if (String(row["Lot"]||"").trim()===String(lot||"").trim()) found.push({"Source Group":group,...row});
+      }
+    }
+  } catch (_) {
+    const sheets=await readReferenceWorkbook(workbookBuffer);
+    const configs=[
+      {name:"Combined Overview",header:4,lot:"Batch",complaint:"Complaint / Notification",family:"Product Family",company:"Customer",problem:"Reported Symptom",status:"Complaint Status"},
+      {name:"Case Conclusions",header:4,lot:"Lot No",complaint:"Complaint No",family:"Product",company:"",problem:"Issue Description",status:"Complaint Status"},
+      {name:"Test Results",header:3,lot:"Lot No",complaint:"",family:"Product",company:"",problem:"Complaint Symptom",status:"Complaint Status"}
+    ];
+    for (const cfg of configs) {
+      for (const row of objectsFromReferenceRows(sheets[cfg.name],cfg.header)) {
+        if (String(row[cfg.lot]||"").trim()!==String(lot||"").trim()) continue;
+        const complaintKey=cfg.complaint||Object.keys(row).find(h=>/Complaint.*No/i.test(h))||"";
+        found.push({
+          "Source Group":cfg.name,"Lot":row[cfg.lot]||"","Product Family":row[cfg.family]||"",
+          "Customer Company":cfg.company?row[cfg.company]||"":"","Complaint / Notification":row[complaintKey]||"",
+          "Problem":row[cfg.problem]||"","Result / Status":row[cfg.status]||""
+        });
+      }
     }
   }
   return found;
@@ -483,13 +839,20 @@ $("excelFile").addEventListener("change", async e=>{
   if (!file) return;
   workbookBuffer=await file.arrayBuffer();
   try {
-    const wb=await loadWorkbook(workbookBuffer);
+    const wb=await loadWorkbook(workbookBuffer.slice(0));
+    workbookMode="standard";
     $("excelStatus").className="status good";
     $("excelStatus").textContent=`Loaded ${file.name} (${wb.worksheets.length} sheets).`;
   } catch(err) {
-    workbookBuffer=null;
-    $("excelStatus").className="status bad";
-    $("excelStatus").textContent=`Could not read workbook: ${err.message}`;
+    if (await isValidXlsxContainer(workbookBuffer)) {
+      workbookMode="reference-readonly";
+      $("excelStatus").className="status good";
+      $("excelStatus").textContent=`Loaded ${file.name} as a protected reference. The app will create a new extracted workbook and leave the original unchanged.`;
+    } else {
+      workbookBuffer=null;
+      $("excelStatus").className="status bad";
+      $("excelStatus").textContent=`Could not read workbook: ${err.message}`;
+    }
   }
 });
 
@@ -507,10 +870,12 @@ $("extractBtn").onclick=async()=>{
         newRecords.push({
           sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
           complaintNo:"", reportDate:"", customerCompany:"", rollsImplicated:"", samplesReceived:"",
-          materialNo:"", productFamily:"",
-          lot:"", problem:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
+          sampleDetails:"", materialNo:"", productDescription:"", productFamily:"",
+          lot:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
           finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
-          finalAssessment:"", warnings:`Extraction error: ${err.message}`, rawText:""
+          coordinator:"", similarEvents:"", containmentNecessary:"", correctiveActionNecessary:"",
+          rootCauseConclusion:"", problemValidation:"", finalAssessment:"", finalScope:"", testEvidence:[],
+          warnings:`Extraction error: ${err.message}`, rawText:""
         });
       }
     }
@@ -542,11 +907,14 @@ $("buildBtn").onclick=async()=>{
     const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    a.href=url; a.download="Membrane_Complaints_Updated.xlsx";
+    a.href=url; a.download=workbookMode==="reference-readonly"
+      ?"Report_Extraction_New.xlsx":"Membrane_Complaints_Updated.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     $("buildStatus").className="status good";
-    $("buildStatus").textContent="Updated workbook created and downloaded.";
+    $("buildStatus").textContent=workbookMode==="reference-readonly"
+      ?"New extracted workbook created. The reference workbook was not changed."
+      :"Updated workbook created and downloaded.";
   } catch(err) {
     $("buildStatus").className="status bad";
     $("buildStatus").textContent=err.message;
@@ -554,3 +922,8 @@ $("buildBtn").onclick=async()=>{
 };
 
 renderRecords();
+
+window.__reportExtractionDebug = {
+  getRecords: () => records.map(r=>structuredClone(r)),
+  parseRecord
+};

@@ -53,6 +53,10 @@ button {
 .warning { background:#fff7ed; color:#9a3412; padding:8px 10px; border-radius:7px; margin-top:10px; font-size:13px; }
 details { margin-top: 10px; }
 details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background:#f8fafc; padding:10px; border-radius:7px; font-size:12px; }
+.test-evidence { margin-top: 14px; }
+.test-evidence h3 { margin: 0 0 8px; color:#17365d; font-size:15px; }
+.table-scroll { overflow-x:auto; }
+.test-evidence table { min-width: 980px; }
 .history-controls { display:flex; gap:8px; align-items:center; }
 .history-controls input { width:240px; }
 table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }

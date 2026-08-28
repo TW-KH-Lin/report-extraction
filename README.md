@@ -1,4 +1,3 @@
-
 # Report Extraction — Pure Web Version
 
 This version requires **no Python and no software installation on the user's laptop**.
@@ -67,6 +66,14 @@ The updated Excel is generated locally in the browser and downloaded back to the
 - Problem
 - Confirmed / Not confirmed / Not conclusive when recoverable from PDF text
 - Master Roll / Final Roll / MR-FR parsing
+- Product description and customer-reported failure
+- Coordinator / report author
+- Recurrence, containment and corrective-action decisions
+- Failure reproduction and process-related root-cause decisions
+- Final assessment and scope decision
+- Root-cause conclusion cross-check for the problem description
+- Structured test evidence with result, outcome, specification status and source page
+- Dedicated `Extracted Test Evidence` sheet aligned to the detailed investigation columns
 - Manual review/edit before export
 - Lot-history lookup in the uploaded Excel
 - One complaint number = one row
