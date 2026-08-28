@@ -1,9 +1,9 @@
 
-import { MsgReader } from "https://cdn.jsdelivr.net/npm/@kenjiuno/msgreader-web-ng@0.2.0-alpha1/+esm";
+import { MsgReader } from "./vendor/msgreader.esm.js";
 
 const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  "./vendor/pdf.worker.min.js";
 
 const CATEGORY_SHEETS = ["Final Reports", "Ongoing - Email", "Not in Detail Excel"];
 const FAMILY_SHEETS = ["CN95", "CN140ub", "CN140", "CN110", "CN180"];
@@ -19,12 +19,14 @@ const CATEGORY_HEADERS = [
 ];
 const FAMILY_HEADERS = ["Source Group", ...CATEGORY_HEADERS];
 const EVIDENCE_SHEET = "Extracted Test Evidence";
+const SUMMARY_SHEET = "Lot & Symptom Summary";
 const EVIDENCE_HEADERS = [
   "Complaint / Notification","Lot","Material No.","Product Family","Units Implicated","Samples Received",
   "Problem","Customer Reported Failure","Complaint Status","Sample Source","Sample ID","Standard Test",
   "Standard Purpose","Standard Method","Result (Source)","Outcome","Within Spec?","Issue Observed?",
   "Source Page","Case-specific Conditions / Source Detail","Source File"
 ];
+const SUMMARY_HEADERS = ["Lot","Complaint Count","Symptom","Symptom Count","Complaint Numbers"];
 
 let workbookBuffer = null;
 let workbookMode = "standard";
@@ -671,6 +673,7 @@ function formatSheet(ws, hasSource=false) {
     "Data Quality / Notes":38,"Material No.":24,"Report Date":16,"Sample Source":22,"Sample ID":28,
     "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
     "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
+    "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,
     "Source File":34
   };
   const widths=ws.getRow(1).values.slice(1).map(h=>widthByHeader[String(h||"")]||20);
@@ -794,6 +797,7 @@ async function buildUpdatedWorkbook() {
     evidenceRows.push(...recordToEvidenceRows(r));
   }
   writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
+  writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
 
   const familyRows=Object.fromEntries(FAMILY_SHEETS.map(f=>[f,[]]));
   const labels={"Final Reports":"Final Report","Ongoing - Email":"Ongoing - Email","Not in Detail Excel":"Not in Detail Excel"};
@@ -815,42 +819,144 @@ async function buildUpdatedWorkbook() {
 }
 
 async function searchHistory(lot) {
-  if (!workbookBuffer) throw new Error("Load the current Excel workbook first.");
   const found=[];
-  try {
-    const wb=await loadWorkbook(workbookBuffer.slice(0));
-    for (const group of CATEGORY_SHEETS) {
-      const ws=wb.getWorksheet(group);
-      for (const row of sheetRows(ws)) {
-        if (String(row["Lot"]||"").trim()===String(lot||"").trim()) found.push({"Source Group":group,...row});
+  if (workbookBuffer) {
+    try {
+      const wb=await loadWorkbook(workbookBuffer.slice(0));
+      for (const group of CATEGORY_SHEETS) {
+        const ws=wb.getWorksheet(group);
+        for (const row of sheetRows(ws)) {
+          if (String(row["Lot"]||"").trim()===String(lot||"").trim()) found.push({"Source Group":group,...row});
+        }
       }
-    }
-  } catch (_) {
-    const sheets=await readReferenceWorkbook(workbookBuffer);
-    const configs=[
-      {name:"Combined Overview",header:4,lot:"Batch",complaint:"Complaint / Notification",family:"Product Family",company:"Customer",problem:"Reported Symptom",status:"Complaint Status"},
-      {name:"Case Conclusions",header:4,lot:"Lot No",complaint:"Complaint No",family:"Product",company:"",problem:"Issue Description",status:"Complaint Status"},
-      {name:"Test Results",header:3,lot:"Lot No",complaint:"",family:"Product",company:"",problem:"Complaint Symptom",status:"Complaint Status"}
-    ];
-    for (const cfg of configs) {
-      for (const row of objectsFromReferenceRows(sheets[cfg.name],cfg.header)) {
-        if (String(row[cfg.lot]||"").trim()!==String(lot||"").trim()) continue;
-        const complaintKey=cfg.complaint||Object.keys(row).find(h=>/Complaint.*No/i.test(h))||"";
-        found.push({
-          "Source Group":cfg.name,"Lot":row[cfg.lot]||"","Product Family":row[cfg.family]||"",
-          "Customer Company":cfg.company?row[cfg.company]||"":"","Complaint / Notification":row[complaintKey]||"",
-          "Problem":row[cfg.problem]||"","Result / Status":row[cfg.status]||""
-        });
+    } catch (_) {
+      const sheets=await readReferenceWorkbook(workbookBuffer);
+      const configs=[
+        {name:"Combined Overview",header:4,lot:"Batch",complaint:"Complaint / Notification",family:"Product Family",company:"Customer",problem:"Reported Symptom",status:"Complaint Status"},
+        {name:"Case Conclusions",header:4,lot:"Lot No",complaint:"Complaint No",family:"Product",company:"",problem:"Issue Description",status:"Complaint Status"},
+        {name:"Test Results",header:3,lot:"Lot No",complaint:"",family:"Product",company:"",problem:"Complaint Symptom",status:"Complaint Status"}
+      ];
+      for (const cfg of configs) {
+        for (const row of objectsFromReferenceRows(sheets[cfg.name],cfg.header)) {
+          if (String(row[cfg.lot]||"").trim()!==String(lot||"").trim()) continue;
+          const complaintKey=cfg.complaint||Object.keys(row).find(h=>/Complaint.*No/i.test(h))||"";
+          found.push({
+            "Source Group":cfg.name,"Lot":row[cfg.lot]||"","Product Family":row[cfg.family]||"",
+            "Customer Company":cfg.company?row[cfg.company]||"":"","Complaint / Notification":row[complaintKey]||"",
+            "Problem":row[cfg.problem]||"","Result / Status":row[cfg.status]||""
+          });
+        }
       }
     }
   }
-  return found;
+
+  syncRecordsFromDom();
+  for (const r of records) {
+    if (String(r.lot||"").trim()!==String(lot||"").trim()) continue;
+    found.push({"Source Group":"Current extraction",...recordToCategoryRow(r)});
+  }
+  return deduplicateHistoryRows(found);
+}
+
+function deduplicateHistoryRows(rows) {
+  const merged=new Map();
+  rows.forEach((row,index)=>{
+    const id=normalizeId(row["Complaint / Notification"]);
+    const key=id?`id:${id}`:`row:${index}`;
+    if (!merged.has(key)) {
+      merged.set(key,{...row});
+      return;
+    }
+    const current=merged.get(key);
+    for (const [field,value] of Object.entries(row)) {
+      if (field==="Source Group") {
+        const groups=new Set(`${current[field]||""}; ${value||""}`.split(";").map(x=>x.trim()).filter(Boolean));
+        current[field]=[...groups].join("; ");
+      } else if (!current[field] && value) current[field]=value;
+    }
+  });
+  return [...merged.values()];
+}
+
+function symptomLabels(row) {
+  const text=cleanBlock(`${row["Problem"]||""} ${row["Customer Reported Failure"]||""}`)
+    .toLowerCase().replace(/[_/]+/g," ");
+  const labels=[];
+  const themes=[
+    ["Absorption / wetting",/\b(?:absorption|absorbency|wetting|wicking)\b/],
+    ["Uneven or interrupted printing lines",/\b(?:uneven|interrupted|broken|discontinuous)\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,45}\b(?:uneven|interrupted|broken|discontinuous)\b/],
+    ["Capillary flow",/\b(?:capillary|flow time|slow flow|fast flow|flow rate)\b/],
+    ["Protein binding",/\b(?:protein binding|binding capacity|weak binding|low binding)\b/],
+    ["Particles / contamination",/\b(?:particle|contaminat|foreign material|debris|dust)\w*\b/],
+    ["Discoloration / staining",/\b(?:discolou?r|stain|spot|yellowing|colour variation|color variation)\w*\b/],
+    ["Physical damage",/\b(?:tear|torn|hole|crack|crease|wrinkle|damage|dent)\w*\b/],
+    ["Backing / delamination",/\b(?:delaminat|separat|backing|adhesion|peel)\w*\b/],
+    ["Dimension / thickness",/\b(?:width|thickness|dimension|oversize|undersize)\w*\b/]
+  ];
+  for (const [label,re] of themes) if (re.test(text)) labels.push(label);
+  if (labels.length) return labels;
+  const fallback=text
+    .replace(/^(?:performance|quality|product|functionality|functional)(?:\s+\w+)?\s+(?:issue|problem)\s*:?\s*/,"")
+    .replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).slice(0,8).join(" ");
+  return fallback?[fallback.charAt(0).toUpperCase()+fallback.slice(1)]:["Unspecified symptom"];
+}
+
+function lotSymptomSummaryRows(categoryRows) {
+  const unique=deduplicateHistoryRows(CATEGORY_SHEETS.flatMap(group=>(categoryRows[group]||[]).map(row=>({"Source Group":group,...row}))));
+  const lots=new Map();
+  unique.forEach((row,index)=>{
+    const lot=String(row["Lot"]||"").trim();
+    if (!lot) return;
+    if (!lots.has(lot)) lots.set(lot,new Map());
+    const complaint=row["Complaint / Notification"]||`Unnumbered complaint ${index+1}`;
+    lots.get(lot).set(complaint,row);
+  });
+  const output=[];
+  for (const [lot,complaints] of lots) {
+    const symptomMap=new Map();
+    for (const [complaint,row] of complaints) {
+      for (const label of new Set(symptomLabels(row))) {
+        if (!symptomMap.has(label)) symptomMap.set(label,new Set());
+        symptomMap.get(label).add(complaint);
+      }
+    }
+    for (const [label,ids] of [...symptomMap.entries()].sort((a,b)=>b[1].size-a[1].size||a[0].localeCompare(b[0]))) {
+      output.push({
+        "Lot":lot,"Complaint Count":complaints.size,"Symptom":label,
+        "Symptom Count":ids.size,"Complaint Numbers":[...ids].join("; ")
+      });
+    }
+  }
+  return output.sort((a,b)=>String(a["Lot"]).localeCompare(String(b["Lot"]),undefined,{numeric:true})||b["Symptom Count"]-a["Symptom Count"]);
 }
 
 function historyTable(rows) {
-  if (!rows.length) return `<p class="status good">No existing complaint row found for this lot.</p>`;
+  if (!rows.length) return `<p class="status good">No complaint found for this lot in the workbook or current extraction.</p>`;
+  const symptomMap=new Map();
+  for (const row of rows) {
+    const complaint=row["Complaint / Notification"]||"Unnumbered complaint";
+    for (const label of new Set(symptomLabels(row))) {
+      if (!symptomMap.has(label)) symptomMap.set(label,new Set());
+      symptomMap.get(label).add(complaint);
+    }
+  }
+  const symptoms=[...symptomMap.entries()]
+    .map(([label,complaints])=>({label,count:complaints.size,complaints:[...complaints]}))
+    .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label));
+  const repeated=symptoms.filter(x=>x.count>1).length;
   const cols=["Source Group","Lot","Product Family","Customer Company","Rolls Implicated","Samples Received","Complaint / Notification","Problem","Tests / Assays Applied","Result / Status","Final Roll(s)"];
-  return `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>
+  return `<div class="history-summary">
+    <div class="metric"><strong>${rows.length}</strong><span>unique complaint${rows.length===1?"":"s"} from this lot</span></div>
+    <div class="metric"><strong>${symptoms.length}</strong><span>symptom theme${symptoms.length===1?"":"s"} reported</span></div>
+    <div class="metric"><strong>${repeated}</strong><span>symptom theme${repeated===1?"":"s"} reported more than once</span></div>
+  </div>
+  <h3>Symptom frequency</h3>
+  <table class="symptom-table"><thead><tr><th>Symptom</th><th>Complaint count</th><th>Complaint number(s)</th></tr></thead><tbody>
+    ${symptoms.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.count}</td><td>${esc(x.complaints.join("; "))}</td></tr>`).join("")}
+  </tbody></table>
+  <p class="hint">Each complaint is counted once per symptom theme, even if it appears on multiple workbook sheets.</p>
+  <h3>Complaints from this lot</h3>
+  <table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>
   ${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??"")}</td>`).join("")}</tr>`).join("")}
   </tbody></table>`;
 }

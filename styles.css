@@ -59,6 +59,12 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .test-evidence table { min-width: 980px; }
 .history-controls { display:flex; gap:8px; align-items:center; }
 .history-controls input { width:240px; }
+.history-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.metric { border:1px solid #dfe5ec; border-radius:10px; padding:14px; background:#f8fafc; }
+.metric strong { display:block; color:#2f5597; font-size:1.7rem; line-height:1; margin-bottom:6px; }
+.metric span { color:#64748b; font-size:.9rem; }
+.symptom-table { margin-bottom:8px; }
+@media (max-width:700px) { .history-summary { grid-template-columns:1fr; } }
 table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }
 th, td { border:1px solid #dde4ec; padding:7px 8px; text-align:left; vertical-align:top; }
 th { background:#17365d; color:white; position:sticky; top:0; }

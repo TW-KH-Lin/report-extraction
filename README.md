@@ -12,21 +12,20 @@ It is a static browser application. It can be hosted on:
 
 ## Privacy model
 
-The application has no backend.
+The application has no backend and uses a restrictive browser content-security policy.
 
 Complaint PDF / MSG / ZIP files and the Excel workbook are processed with JavaScript inside the browser. The code does not intentionally upload those files to GitHub, the hosting service, or an API.
 
-The current version loads JavaScript libraries from jsDelivr CDN. Those requests download library code only. Complaint file contents are not sent to the CDN.
-
-For a stricter corporate/offline deployment, the libraries can be bundled into the repository later so the page makes no third-party CDN requests.
+All required browser libraries are pinned and stored in the repository under `vendor/`. The deployed app makes no third-party library or API connections.
 
 ## How to deploy with GitHub Pages
 
 1. Create a new GitHub repository, for example `membrane-complaint-web`.
-2. Upload these files to the repository root:
+2. Upload these files and folders to the repository root:
    - `index.html`
    - `app.js`
    - `styles.css`
+   - `vendor/`
 3. In GitHub, open **Settings → Pages**.
 4. Choose deployment from the repository branch (normally `main`) and root folder.
 5. Save.
@@ -40,7 +39,7 @@ No Python is required to use the deployed page.
 Do **not** put a workbook containing real complaint/customer information in the GitHub repository.
 
 Instead:
-1. host only these three web files;
+1. host only the app source files and bundled `vendor/` libraries;
 2. open the webpage;
 3. optionally upload an existing Excel workbook from your computer;
 4. upload one or more complaint reports;
@@ -76,7 +75,10 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Structured test evidence with result, outcome, specification status and source page
 - Dedicated `Extracted Test Evidence` sheet aligned to the detailed investigation columns
 - Manual review/edit before export
-- Lot-history lookup in the uploaded Excel
+- Lot-history lookup in the uploaded Excel and current extraction
+- Unique complaint count for the same lot
+- Symptom-frequency summary without double-counting complaints repeated across workbook sheets
+- `Lot & Symptom Summary` worksheet in generated Excel files
 - One complaint number = one row
 - Updates three category sheets
 - Rebuilds CN95 / CN140ub / CN140 / CN110 / CN180 sheets
@@ -98,3 +100,7 @@ Add a browser-side review screen showing:
 - report page / source sentence
 
 Then add optional browser OCR for scanned PDFs.
+
+## Bundled third-party libraries
+
+Pinned browser builds are stored under `vendor/`. See `THIRD_PARTY_NOTICES.md` and `vendor/licenses/` for versions and license texts.
