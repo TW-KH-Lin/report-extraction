@@ -10,7 +10,7 @@ const FAMILY_SHEETS = ["CN95", "CN140ub", "CN140", "CN110", "CN180"];
 const CATEGORY_HEADERS = [
   "Lot","Product Family","Customer Company","Rolls Implicated","Samples Received",
   "Final Roll(s)","Master Roll(s)","MR-FR Area(s)",
-  "Complaint / Notification","Problem","Customer Reported Failure","Tests / Assays Applied",
+  "Complaint / Notification","Formal Issue Description","Problem","Customer Reported Failure","Tests / Assays Applied",
   "Result / Status","Criticality","Failure Reproduced?","Root Cause in Process?",
   "Product Description","Coordinator","Similar Events Same Category?","Containment Necessary?",
   "Corrective / Preventive Action Necessary?","Root Cause Analysis Conclusion","Problem Description Check",
@@ -114,6 +114,19 @@ function validateProblemAgainstRootCause(problem, customerFailure, rootCauseConc
   if (overlap.length>=2) return `Consistent with root-cause conclusion (${overlap.slice(0,4).join(", ")})`;
   if (overlap.length===1) return `Broad match - review wording (${overlap[0]})`;
   return "Potential mismatch - review problem description against root-cause conclusion";
+}
+
+function enrichProblemDescription(formalProblem, customerFailure, rootCauseConclusion) {
+  const formal=cleanBlock(formalProblem);
+  let detail=cleanBlock(customerFailure).replace(/[.!?]+$/g,"");
+  const isBroad=/^(?:performance|quality|product|functionality|functional)(?:\s+\w+)?\s+(?:issue|problem)$/i.test(formal);
+  if (!isBroad) return formal || detail;
+  if (/absorption(?:-related)?\s+(?:issue|problem)/i.test(rootCauseConclusion) && !/absorption/i.test(detail)) {
+    detail=detail?`Absorption issue; ${detail}`:"Absorption issue";
+  }
+  if (!detail && /line\s+(?:behavior|quality|printing)/i.test(rootCauseConclusion)) detail="Line quality / printing issue";
+  if (!detail) return formal;
+  return `${formal}: ${detail.charAt(0).toLowerCase()}${detail.slice(1)}`;
 }
 
 function parseMrFr(text) {
@@ -306,7 +319,7 @@ function parseRecord(text, filename, sourceType) {
   if (receivedIdentifiers && !sampleDetails.includes(receivedIdentifiers)) {
     sampleDetails=cleanBlock(`${sampleDetails} (${receivedIdentifiers})`);
   }
-  const problem = firstMatch(text, [
+  const formalProblem = firstMatch(text, [
     /(?:Issue|Problem|Complaint)\s+description\s*[:#]?\s*([\s\S]{5,600}?)(?=\s+(?:(?:[A-Za-z]+\s+)?Criticality|Complaint\s+status|Date\s+Complaint|Could\s+the\s+failure|Root\s+cause|Investigation|Final\s+assessment|Conclusion|Figure|Fig\.)\b|$)/i,
     /Customer\s+(?:statement|complaint)\s*[:#]?\s*[“"]?([\s\S]{5,600}?)(?=[”"]?\s*(?:Criticality|Complaint\s+status|Figure|Fig\.|Investigation|Conclusion|$))/i,
     /(?:Issue|Problem|Complaint)\s+description\s*[:#]?\s*(.{5,500})/i,
@@ -334,6 +347,7 @@ function parseRecord(text, filename, sourceType) {
     "(?:4\\.\\s*Correction|4\\.\\s*Conclusion|5\\.\\s*Conclusion|Corrective\\s*/\\s*Preventive|--- Page)",
     2600
   );
+  const problem = enrichProblemDescription(formalProblem, customerReportedFailure, rootCauseConclusion);
   const problemValidation = validateProblemAgainstRootCause(problem, customerReportedFailure, rootCauseConclusion);
   const finalAssessment = sectionMatch(
     text,
@@ -373,7 +387,7 @@ function parseRecord(text, filename, sourceType) {
     complaintNo, reportDate, customerCompany, rollsImplicated, samplesReceived,
     sampleDetails, materialNo: material, productDescription,
     productFamily: productFamily(material), lot,
-    problem, assaysApplied, resultStatus:status, criticality,
+    formalProblem, problem, assaysApplied, resultStatus:status, criticality,
     masterRolls: mrfr.masters.join("; "),
     finalRolls: mrfr.finals.join("; "),
     mrfrAreas: mrfr.areas.join("; "),
@@ -483,7 +497,8 @@ function recordCard(r, index) {
       ${field("criticality","Criticality",r.criticality)}
       ${field("failureReproduced","Failure Reproduced?",r.failureReproduced)}
       ${field("rootCauseRelated","Root Cause Related?",r.rootCauseRelated)}
-      ${textarea("problem","Problem",r.problem,"wide")}
+      ${field("formalProblem","Formal Issue Description",r.formalProblem,"wide")}
+      ${textarea("problem","Workbook Problem (enriched)",r.problem,"wide")}
       ${textarea("customerReportedFailure","Customer Reported Failure",r.customerReportedFailure,"wide")}
       ${textarea("assaysApplied","Tests / Assays Applied",r.assaysApplied,"wide")}
       ${field("coordinator","Coordinator / Written By",r.coordinator)}
@@ -650,7 +665,7 @@ function formatSheet(ws, hasSource=false) {
   const widthByHeader={
     "Source Group":20,"Lot":13,"Product Family":15,"Customer Company":28,"Rolls Implicated":16,
     "Samples Received":16,"Final Roll(s)":18,"Master Roll(s)":18,"MR-FR Area(s)":28,
-    "Complaint / Notification":24,"Problem":34,"Customer Reported Failure":42,"Tests / Assays Applied":38,
+    "Complaint / Notification":24,"Formal Issue Description":28,"Problem":38,"Customer Reported Failure":42,"Tests / Assays Applied":38,
     "Result / Status":20,"Criticality":14,"Failure Reproduced?":18,"Root Cause in Process?":20,
     "Product Description":36,"Coordinator":20,"Final Assessment / Root Cause":48,"Final Scope / Decision":38,
     "Data Quality / Notes":38,"Material No.":24,"Report Date":16,"Sample Source":22,"Sample ID":28,
@@ -690,7 +705,8 @@ function recordToCategoryRow(r) {
     "Rolls Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
     "Final Roll(s)":r.finalRolls||"", "Master Roll(s)":r.masterRolls||"",
     "MR-FR Area(s)":r.mrfrAreas||"", "Complaint / Notification":r.complaintNo||"",
-    "Problem":r.problem||"", "Customer Reported Failure":r.customerReportedFailure||"",
+    "Formal Issue Description":r.formalProblem||"", "Problem":r.problem||"",
+    "Customer Reported Failure":r.customerReportedFailure||"",
     "Tests / Assays Applied":r.assaysApplied||"", "Result / Status":r.resultStatus||"",
     "Criticality":r.criticality||"", "Failure Reproduced?":r.failureReproduced||"",
     "Root Cause in Process?":r.rootCauseRelated||"",
@@ -871,7 +887,7 @@ $("extractBtn").onclick=async()=>{
           sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
           complaintNo:"", reportDate:"", customerCompany:"", rollsImplicated:"", samplesReceived:"",
           sampleDetails:"", materialNo:"", productDescription:"", productFamily:"",
-          lot:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
+          lot:"", formalProblem:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
           finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
           coordinator:"", similarEvents:"", containmentNecessary:"", correctiveActionNecessary:"",
           rootCauseConclusion:"", problemValidation:"", finalAssessment:"", finalScope:"", testEvidence:[],
