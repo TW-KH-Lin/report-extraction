@@ -54,7 +54,9 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
 - Complaint number
+- Complaint registered date, report date and elapsed days
 - Material number
+- Membrane type (including backed/unbacked when recoverable)
 - product-family mapping:
   - `1UN95` → CN95
   - `1UN14AR` → CN140ub
@@ -63,8 +65,10 @@ The Excel file is generated locally in the browser and downloaded back to the us
   - `1UN18` → CN180
 - Lot
 - Problem
+- Standardized symptoms, problem type and LFA relevance
 - Confirmed / Not confirmed / Not conclusive when recoverable from PDF text
 - Master Roll / Final Roll / MR-FR parsing
+- Zone and combined MR-FR fields for summary-workbook transfer
 - Product description and customer-reported failure
 - Coordinator / report author
 - Recurrence, containment and corrective-action decisions

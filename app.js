@@ -8,14 +8,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const CATEGORY_SHEETS = ["Final Reports", "Ongoing - Email", "Not in Detail Excel"];
 const FAMILY_SHEETS = ["CN95", "CN140ub", "CN140", "CN110", "CN180"];
 const CATEGORY_HEADERS = [
-  "Lot","Product Family","Customer Company","Rolls Implicated","Samples Received",
-  "Final Roll(s)","Master Roll(s)","MR-FR Area(s)",
+  "Lot","Product Family","Membrane Type","Customer Company","Rolls Implicated","Samples Received",
+  "Zone(s)","Final Roll(s)","Master Roll(s)","MR-FR Area(s)","MR-FR (s)",
   "Complaint / Notification","Formal Issue Description","Problem","Customer Reported Failure","Tests / Assays Applied",
+  "Standardized Symptom(s)","Problem Type","LFA Relevance",
   "Result / Status","Criticality","Failure Reproduced?","Root Cause in Process?",
   "Product Description","Coordinator","Similar Events Same Category?","Containment Necessary?",
   "Corrective / Preventive Action Necessary?","Root Cause Analysis Conclusion","Problem Description Check",
   "Final Assessment / Root Cause","Final Scope / Decision",
-  "Sample Details","Data Quality / Notes","Material No.","Report Date"
+  "Sample Details","Data Quality / Notes","Material No.","Complaint Registered Date","Report Date","Days"
 ];
 const FAMILY_HEADERS = ["Source Group", ...CATEGORY_HEADERS];
 const EVIDENCE_SHEET = "Extracted Test Evidence";
@@ -45,6 +46,89 @@ function productFamily(material="") {
   if (code.startsWith("1UN11")) return "CN110";
   if (code.startsWith("1UN18")) return "CN180";
   return "";
+}
+
+function membraneType(material="", description="") {
+  const family=productFamily(material);
+  const familyLabel=family==="CN140ub"?"CN140":family;
+  const source=`${material} ${description}`.toLowerCase();
+  let backing="";
+  if (/\bunbacked\b/.test(source) || /^1un14ar/i.test(material)) backing="unbacked";
+  else if (/\bbacked\b/.test(source) || /^1un(?:95|11|14er|18)/i.test(material)) backing="backed";
+  return [familyLabel,backing].filter(Boolean).join(" ");
+}
+
+function complaintClassification(problem="", customerFailure="") {
+  const text=cleanBlock(`${problem} ${customerFailure}`).toLowerCase().replace(/[_/]+/g," ");
+  const matches=[];
+  const rules=[
+    ["Poor absorption","Flow / Wetting",/\b(?:poor|low|reduced)?\s*absorption\b|\babsorption\s+(?:issue|problem)\b/],
+    ["Abnormal wicking / flow","Flow / Wetting",/\b(?:wicking|slow running|slow flow|fast flow|flow time|fail(?:ed)? to run)\b/],
+    ["Wetting issue","Flow / Wetting",/\b(?:wetting|hydrophilic|hydrophobic|dry spot|white circle)\w*\b/],
+    ["Uneven line","Line / Printing",/\buneven\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,45}\buneven\b/],
+    ["Discontinuous line","Line / Printing",/\b(?:discontinuous|interrupted|broken)\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,45}\b(?:discontinuous|interrupted|broken)\b/],
+    ["Wide / spreading line","Line / Printing",/\b(?:wide|wider|spreading|diffusion|fringing)\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b/],
+    ["Ghost line","Signal / Assay",/\bghost\s+line\b/],
+    ["Abnormal signal","Signal / Assay",/\b(?:abnormal|signal)\s+(?:signal|issue)\b/],
+    ["Low sensitivity","Signal / Assay",/\blow\s+sensitivity\b/],
+    ["False positive","Signal / Assay",/\bfalse\s+positive\b/],
+    ["Color / visual issue","Appearance / Surface",/\b(?:coloring|colouring|discolou?r|color variation|colour variation|visual issue|stain|spot)\w*\b/],
+    ["Surface roughness","Appearance / Surface",/\b(?:rough|roughness)\b[^.]{0,35}\b(?:membrane|surface)?\b/],
+    ["Imprint","Appearance / Surface",/\bimprints?\b/],
+    ["Particles","Appearance / Surface",/\b(?:particle|dust|debris)\w*\b/],
+    ["Dirt","Appearance / Surface",/\b(?:dirt|contaminat|foreign material)\w*\b/],
+    ["Scratch","Mechanical",/\bscratch(?:es|ed)?\b/],
+    ["Crack","Mechanical",/\bcracks?\b/],
+    ["Rupture","Mechanical",/\b(?:rupture|broken membrane)\w*\b/],
+    ["Edge damage / telescoping","Mechanical",/\b(?:edge damage|telescop|mechanical damage)\w*\b/],
+    ["Thickness out of specification","Specification / Conversion",/\bthickness\b[^.]{0,35}\b(?:spec|specification|out)\b/],
+    ["Length out of specification","Specification / Conversion",/\b(?:length|short roll)\b[^.]{0,35}\b(?:short|spec|specification|out)?\b/],
+    ["Width out of specification","Specification / Conversion",/\bwidth\b[^.]{0,35}\b(?:spec|specification|out)\b/],
+    ["Low peel strength","Specification / Conversion",/\b(?:low peel strength|peel strength|backing adhesion|label lifting)\b/],
+    ["Bag unsealed","Packaging / Storage",/\b(?:bag unsealed|unsealed bag|open bag|packaging integrity)\b/],
+    ["Odor / storage concern","Packaging / Storage",/\b(?:odor|odour|storage concern)\b/],
+    ["Inter-roll / intra-lot variation","Variation",/\b(?:difference between rolls|roll-to-roll|intra-lot|zone difference|variation between rolls)\b/]
+  ];
+  for (const [symptom,type,re] of rules) if (re.test(text)) matches.push({symptom,type});
+  const symptoms=[...new Set(matches.map(x=>x.symptom))];
+  const types=[...new Set(matches.map(x=>x.type))];
+  const fallback=cleanBlock(problem).replace(/^(?:performance|quality|product|functionality|functional)(?:\s+\w+)?\s+(?:issue|problem)\s*:?\s*/i,"");
+  const standardizedSymptoms=symptoms.length?symptoms.join("; "):(fallback||"Review required");
+  const problemTypes=types.length?types.join("; "):"Review required";
+  const lfaRelevance=types.some(x=>["Flow / Wetting","Line / Printing","Signal / Assay"].includes(x))
+    ?"LFA performance"
+    :types.some(x=>["Appearance / Surface","Mechanical","Variation"].includes(x))
+      ?"Potential LFA impact"
+      :types.some(x=>["Specification / Conversion","Packaging / Storage"].includes(x))
+        ?"Non-LFA":"Review required";
+  return {standardizedSymptoms,problemTypes,lfaRelevance};
+}
+
+function parseFlexibleDate(value="") {
+  const text=String(value).trim();
+  let m=text.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+  if (m) {
+    const year=Number(m[3])+(m[3].length===2?2000:0);
+    return new Date(Date.UTC(year,Number(m[2])-1,Number(m[1])));
+  }
+  m=text.match(/^(\d{1,2})[.\/-]([A-Za-z]{3,9})[.\/-](\d{2,4})$/);
+  if (m) {
+    const month=new Date(`${m[2]} 1, 2000`).getMonth();
+    const year=Number(m[3])+(m[3].length===2?2000:0);
+    if (month>=0) return new Date(Date.UTC(year,month,Number(m[1])));
+  }
+  m=text.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})$/);
+  if (m) {
+    const month=new Date(`${m[2]} 1, 2000`).getMonth();
+    const year=Number(m[3])+(m[3].length===2?2000:0);
+    if (month>=0) return new Date(Date.UTC(year,month,Number(m[1])));
+  }
+  return null;
+}
+
+function daysBetweenDates(start,end) {
+  const a=parseFlexibleDate(start), b=parseFlexibleDate(end);
+  return a&&b?Math.round((b-a)/86400000):"";
 }
 
 function firstMatch(text, regexes) {
@@ -338,6 +422,13 @@ function parseRecord(text, filename, sourceType) {
   const assaysApplied = extractAssays(text);
   const testEvidence = extractTestEvidence(text);
   const mrfr = parseMrFr(text);
+  const zones = firstMatch(text, [
+    /Zone\s*\(s\)\s*[:#]?\s*([^\n]{1,120})/i,
+    /(?:Membrane|Roll)\s+zones?\s*[:#]?\s*([^\n]{1,120})/i
+  ]);
+  const mrfrCombined = mrfr.areas.length
+    ? mrfr.areas.join("; ")
+    : mrfr.masters.map(x=>`MR${x}`).join("; ");
   const sourceGroup = sourceType === "msg" ? "Ongoing - Email" : "Final Reports";
   const customerReportedFailure = cleanBlock(firstMatch(text, [
     /received\s+a\s+complaint\s+with\s+the\s+following\s+statement\s*:\s*[“"]?([\s\S]{3,500}?)(?=\s*(?:Picture\s*s|Pictures|Figure|1\.2\.|Criticality|--- Page))/i,
@@ -367,17 +458,25 @@ function parseRecord(text, filename, sourceType) {
   ]);
   const coordinator = coordinatorFromText(text);
   const reportVersion = firstMatch(text, [/Report\s+version\s*[:#]?\s*([A-Z0-9.-]+)/i]);
-  const complaintRegisteredDate = firstMatch(text, [/Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}[-./ ][A-Za-z0-9]{2,9}[-./ ][0-9]{2,4})/i]);
+  let complaintRegisteredDate = firstMatch(text, [
+    /Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}\s*[-./]\s*[A-Za-z0-9]{2,9}\s*[-./]\s*[0-9]{2,4})/i,
+    /Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{2,4})/i
+  ]);
+  complaintRegisteredDate=complaintRegisteredDate.replace(/\s*([./-])\s*/g,"$1");
   const samplesReceivedDate = firstMatch(text, [/Date\s+samples\s+received\s*[:#]?\s*([A-Z0-9][A-Z0-9 .\/-]{1,30})/i]);
+  const classification = complaintClassification(problem,customerReportedFailure);
+  const daysToReport = daysBetweenDates(complaintRegisteredDate,reportDate);
 
   const warnings = [];
   if (!complaintNo) warnings.push("Complaint number not extracted");
   if (!material) warnings.push("Material number not extracted");
   if (!lot) warnings.push("Lot not extracted");
   if (!problem) warnings.push("Problem not extracted");
+  if (!complaintRegisteredDate) warnings.push("Complaint registered date not extracted");
   if (!reportDate) warnings.push("Report date not extracted");
   if (!customerCompany) warnings.push("Customer company not extracted");
   if (!customerReportedFailure) warnings.push("Customer-reported failure not extracted");
+  if (classification.problemTypes==="Review required") warnings.push("Standardized symptom classification requires review");
   if (problemValidation.startsWith("Potential mismatch")) warnings.push(problemValidation);
   if (sourceType === "pdf" && text.replace(/\s/g, "").length < 80) {
     warnings.push("This PDF has little or no selectable text; OCR may be required");
@@ -389,6 +488,9 @@ function parseRecord(text, filename, sourceType) {
     complaintNo, reportDate, customerCompany, rollsImplicated, samplesReceived,
     sampleDetails, materialNo: material, productDescription,
     productFamily: productFamily(material), lot,
+    membraneType:membraneType(material,productDescription), zones, mrfrCombined,
+    standardizedSymptoms:classification.standardizedSymptoms,
+    problemTypes:classification.problemTypes, lfaRelevance:classification.lfaRelevance,
     formalProblem, problem, assaysApplied, resultStatus:status, criticality,
     masterRolls: mrfr.masters.join("; "),
     finalRolls: mrfr.finals.join("; "),
@@ -396,7 +498,7 @@ function parseRecord(text, filename, sourceType) {
     failureReproduced: reproduced,
     rootCauseRelated: rootCause,
     customerReportedFailure, coordinator, reportVersion,
-    complaintRegisteredDate, samplesReceivedDate,
+    complaintRegisteredDate, samplesReceivedDate, daysToReport,
     similarEvents, containmentNecessary, correctiveActionNecessary,
     rootCauseConclusion, problemValidation, finalAssessment, finalScope, testEvidence,
     warnings: warnings.join("; "),
@@ -483,7 +585,9 @@ function recordCard(r, index) {
     <div class="grid">
       ${fieldSelect("sourceGroup","Category",groupOptions)}
       ${field("complaintNo","Complaint / Notification",r.complaintNo)}
+      ${field("complaintRegisteredDate","Complaint Registered Date",r.complaintRegisteredDate)}
       ${field("reportDate","Report Date",r.reportDate)}
+      ${field("daysToReport","Days to Report",r.daysToReport)}
       ${field("customerCompany","Customer Company",r.customerCompany,"wide")}
       ${field("rollsImplicated","Rolls Implicated",r.rollsImplicated)}
       ${field("samplesReceived","Samples Received",r.samplesReceived)}
@@ -492,9 +596,12 @@ function recordCard(r, index) {
       ${field("materialNo","Material No.",r.materialNo)}
       ${field("productDescription","Product Description",r.productDescription,"wide")}
       ${fieldSelect("productFamily","Product Family",famOptions)}
+      ${field("membraneType","Membrane Type",r.membraneType)}
+      ${field("zones","Zone(s)",r.zones)}
       ${field("masterRolls","Master Roll(s)",r.masterRolls)}
       ${field("finalRolls","Final Roll(s)",r.finalRolls)}
       ${field("mrfrAreas","MR-FR Area(s)",r.mrfrAreas,"wide")}
+      ${field("mrfrCombined","MR-FR (s)",r.mrfrCombined,"wide")}
       ${field("resultStatus","Result / Status",r.resultStatus)}
       ${field("criticality","Criticality",r.criticality)}
       ${field("failureReproduced","Failure Reproduced?",r.failureReproduced)}
@@ -502,6 +609,9 @@ function recordCard(r, index) {
       ${field("formalProblem","Formal Issue Description",r.formalProblem,"wide")}
       ${textarea("problem","Workbook Problem (enriched)",r.problem,"wide")}
       ${textarea("customerReportedFailure","Customer Reported Failure",r.customerReportedFailure,"wide")}
+      ${field("standardizedSymptoms","Standardized Symptom(s)",r.standardizedSymptoms,"wide")}
+      ${field("problemTypes","Problem Type",r.problemTypes,"wide")}
+      ${field("lfaRelevance","LFA Relevance",r.lfaRelevance)}
       ${textarea("assaysApplied","Tests / Assays Applied",r.assaysApplied,"wide")}
       ${field("coordinator","Coordinator / Written By",r.coordinator)}
       ${field("similarEvents","Similar Events Same Category?",r.similarEvents)}
@@ -665,18 +775,21 @@ function clearSheet(ws) {
 function formatSheet(ws, hasSource=false) {
   ws.views=[{state:"frozen", xSplit:2, ySplit:1}];
   const widthByHeader={
-    "Source Group":20,"Lot":13,"Product Family":15,"Customer Company":28,"Rolls Implicated":16,
+    "Source Group":20,"Lot":13,"Product Family":15,"Membrane Type":20,"Customer Company":28,"Rolls Implicated":16,
     "Samples Received":16,"Final Roll(s)":18,"Master Roll(s)":18,"MR-FR Area(s)":28,
+    "Zone(s)":20,"MR-FR (s)":30,
     "Complaint / Notification":24,"Formal Issue Description":28,"Problem":38,"Customer Reported Failure":42,"Tests / Assays Applied":38,
+    "Standardized Symptom(s)":36,"Problem Type":30,"LFA Relevance":22,
     "Result / Status":20,"Criticality":14,"Failure Reproduced?":18,"Root Cause in Process?":20,
     "Product Description":36,"Coordinator":20,"Final Assessment / Root Cause":48,"Final Scope / Decision":38,
-    "Data Quality / Notes":38,"Material No.":24,"Report Date":16,"Sample Source":22,"Sample ID":28,
+    "Data Quality / Notes":38,"Material No.":24,"Complaint Registered Date":20,"Report Date":16,"Days":12,"Sample Source":22,"Sample ID":28,
     "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
     "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
     "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,
     "Source File":34
   };
-  const widths=ws.getRow(1).values.slice(1).map(h=>widthByHeader[String(h||"")]||20);
+  const headers=ws.getRow(1).values.slice(1).map(h=>String(h||""));
+  const widths=headers.map(h=>widthByHeader[h]||20);
   ws.columns.forEach((c,i)=>c.width=widths[i]||18);
   const header=ws.getRow(1);
   header.height=25;
@@ -687,6 +800,10 @@ function formatSheet(ws, hasSource=false) {
   });
   for (let r=2;r<=ws.rowCount;r++) {
     ws.getRow(r).alignment={vertical:"top",wrapText:true};
+  }
+  for (const dateHeader of ["Complaint Registered Date","Report Date"]) {
+    const index=headers.indexOf(dateHeader)+1;
+    if (index>0) for (let r=2;r<=ws.rowCount;r++) ws.getCell(r,index).numFmt="dd.mm.yyyy";
   }
   ws.autoFilter={from:{row:1,column:1},to:{row:ws.rowCount,column:ws.columnCount}};
 }
@@ -702,14 +819,23 @@ function normalizeId(v) { return String(v||"").trim().toLowerCase(); }
 
 function recordToCategoryRow(r) {
   const fam = productFamily(r.materialNo) || r.productFamily || "";
+  const classification=complaintClassification(r.problem,r.customerReportedFailure);
+  const registeredDate=parseFlexibleDate(r.complaintRegisteredDate)||r.complaintRegisteredDate||"";
+  const reportDate=parseFlexibleDate(r.reportDate)||r.reportDate||"";
+  const calculatedDays=daysBetweenDates(r.complaintRegisteredDate,r.reportDate);
   return {
     "Lot":r.lot||"", "Product Family":fam,
+    "Membrane Type":membraneType(r.materialNo,r.productDescription)||r.membraneType||"",
     "Customer Company":r.customerCompany||"",
     "Rolls Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
+    "Zone(s)":r.zones||"",
     "Final Roll(s)":r.finalRolls||"", "Master Roll(s)":r.masterRolls||"",
-    "MR-FR Area(s)":r.mrfrAreas||"", "Complaint / Notification":r.complaintNo||"",
+    "MR-FR Area(s)":r.mrfrAreas||"", "MR-FR (s)":r.mrfrCombined||r.mrfrAreas||"",
+    "Complaint / Notification":r.complaintNo||"",
     "Formal Issue Description":r.formalProblem||"", "Problem":r.problem||"",
     "Customer Reported Failure":r.customerReportedFailure||"",
+    "Standardized Symptom(s)":classification.standardizedSymptoms,
+    "Problem Type":classification.problemTypes,"LFA Relevance":classification.lfaRelevance,
     "Tests / Assays Applied":r.assaysApplied||"", "Result / Status":r.resultStatus||"",
     "Criticality":r.criticality||"", "Failure Reproduced?":r.failureReproduced||"",
     "Root Cause in Process?":r.rootCauseRelated||"",
@@ -721,7 +847,8 @@ function recordToCategoryRow(r) {
     "Problem Description Check":r.problemValidation||"",
     "Final Assessment / Root Cause":r.finalAssessment||"", "Final Scope / Decision":r.finalScope||"",
     "Sample Details":r.sampleDetails||"", "Data Quality / Notes":r.warnings||"",
-    "Material No.":r.materialNo||"", "Report Date":r.reportDate||""
+    "Material No.":r.materialNo||"", "Complaint Registered Date":registeredDate,
+    "Report Date":reportDate,"Days":calculatedDays===""?(r.daysToReport||""):calculatedDays
   };
 }
 
@@ -998,7 +1125,8 @@ $("extractBtn").onclick=async()=>{
           sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
           complaintNo:"", reportDate:"", customerCompany:"", rollsImplicated:"", samplesReceived:"",
           sampleDetails:"", materialNo:"", productDescription:"", productFamily:"",
-          lot:"", formalProblem:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
+          lot:"", membraneType:"", zones:"", mrfrCombined:"", standardizedSymptoms:"", problemTypes:"", lfaRelevance:"",
+          complaintRegisteredDate:"", daysToReport:"", formalProblem:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
           finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
           coordinator:"", similarEvents:"", containmentNecessary:"", correctiveActionNecessary:"",
           rootCauseConclusion:"", problemValidation:"", finalAssessment:"", finalScope:"", testEvidence:[],
