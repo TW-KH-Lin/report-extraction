@@ -53,6 +53,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - PDF complaint report extraction
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
+- Add reports in later selections without replacing earlier extracted complaints
+- Re-extract the same complaint to update its existing row instead of creating a duplicate
 - Complaint number
 - Complaint registered date, report date and elapsed days
 - Material number

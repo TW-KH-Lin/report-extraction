@@ -677,6 +677,16 @@ function syncRecordsFromDom() {
   });
 }
 
+function matchingRecordIndex(record) {
+  const complaint=normalizeId(record.complaintNo);
+  if (complaint) {
+    const byComplaint=records.findIndex(existing=>normalizeId(existing.complaintNo)===complaint);
+    if (byComplaint>=0) return byComplaint;
+  }
+  const source=normalizeId(record.sourceFile);
+  return source ? records.findIndex(existing=>normalizeId(existing.sourceFile)===source) : -1;
+}
+
 async function loadWorkbook(buffer) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
@@ -1113,6 +1123,7 @@ $("excelFile").addEventListener("change", async e=>{
 $("extractBtn").onclick=async()=>{
   const files=$("complaintFiles").files;
   if (!files?.length) return;
+  syncRecordsFromDom();
   $("extractStatus").className="status";
   $("extractStatus").textContent="Extracting...";
   try {
@@ -1134,10 +1145,24 @@ $("extractBtn").onclick=async()=>{
         });
       }
     }
-    records.push(...newRecords);
+    let added=0, updated=0;
+    for (const record of newRecords) {
+      const existingIndex=matchingRecordIndex(record);
+      if (existingIndex>=0) {
+        records[existingIndex]=record;
+        updated++;
+      } else {
+        records.push(record);
+        added++;
+      }
+    }
     renderRecords();
+    $("complaintFiles").value="";
     $("extractStatus").className="status good";
-    $("extractStatus").textContent=`Extracted ${newRecords.length} file(s).`;
+    const parts=[];
+    if (added) parts.push(`added ${added}`);
+    if (updated) parts.push(`updated ${updated}`);
+    $("extractStatus").textContent=`Extraction complete: ${parts.join(", ")}. Existing complaints were kept.`;
   } catch(err) {
     $("extractStatus").className="status bad";
     $("extractStatus").textContent=err.message;
