@@ -42,6 +42,11 @@ button {
 }
 .record-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
 .record-title { font-weight: 750; color:#17365d; }
+.record-summary { margin-top:3px; color:#64748b; font-size:13px; }
+.record-actions, .review-actions { display:flex; align-items:center; gap:8px; }
+.record-actions button, .review-actions button { margin-left:0; }
+.record.collapsed .record-head { margin-bottom:0; }
+.record.collapsed .record-body { display:none; }
 .grid {
   display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px;
 }
@@ -74,4 +79,8 @@ footer {
 @media(max-width: 1050px) {
   .grid { grid-template-columns: repeat(2, minmax(150px,1fr)); }
   header { align-items:flex-start; flex-direction:column; }
+}
+@media(max-width: 700px) {
+  .panel-title-row, .record-head { flex-direction:column; align-items:stretch; }
+  .record-actions, .review-actions { flex-wrap:wrap; }
 }

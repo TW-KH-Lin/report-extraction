@@ -32,6 +32,7 @@ const SUMMARY_HEADERS = ["Lot","Complaint Count","Symptom","Symptom Count","Comp
 let workbookBuffer = null;
 let workbookMode = "standard";
 let records = [];
+const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
 const esc = (s="") => String(s)
@@ -572,16 +573,24 @@ async function expandFiles(fileList) {
 }
 
 function recordCard(r, index) {
+  const collapsed=collapsedRecords.has(recordUiKey(r));
   const groupOptions = CATEGORY_SHEETS.map(x =>
     `<option ${x===r.sourceGroup?"selected":""}>${x}</option>`).join("");
   const famOptions = ["","CN95","CN140ub","CN140","CN110","CN180"].map(x =>
     `<option ${x===r.productFamily?"selected":""}>${x}</option>`).join("");
   return `
-  <div class="record" data-index="${index}">
+  <div class="record${collapsed?" collapsed":""}" data-index="${index}">
     <div class="record-head">
-      <div class="record-title">${esc(r.sourceFile)}</div>
-      <button class="secondary remove-record" data-index="${index}">Remove</button>
+      <div>
+        <div class="record-title">${esc(r.sourceFile)}</div>
+        <div class="record-summary">${esc([r.complaintNo,r.lot?`Lot ${r.lot}`:""].filter(Boolean).join(" · "))}</div>
+      </div>
+      <div class="record-actions">
+        <button class="secondary toggle-record" data-index="${index}" aria-expanded="${collapsed?"false":"true"}">${collapsed?"Show details":"Fold"}</button>
+        <button class="secondary remove-record" data-index="${index}">Remove</button>
+      </div>
     </div>
+    <div class="record-body">
     <div class="grid">
       ${fieldSelect("sourceGroup","Category",groupOptions)}
       ${field("complaintNo","Complaint / Notification",r.complaintNo)}
@@ -625,6 +634,7 @@ function recordCard(r, index) {
     ${testEvidenceTable(r.testEvidence)}
     ${r.warnings ? `<div class="warning">${esc(r.warnings)}</div>` : ""}
     <details><summary>Raw extracted text</summary><pre>${esc(r.rawText)}</pre></details>
+    </div>
   </div>`;
 }
 function testEvidenceTable(tests=[]) {
@@ -655,8 +665,27 @@ function renderRecords() {
   document.querySelectorAll(".remove-record").forEach(btn => {
     btn.onclick = () => {
       syncRecordsFromDom();
-      records.splice(Number(btn.dataset.index),1);
+      const index=Number(btn.dataset.index);
+      collapsedRecords.delete(recordUiKey(records[index]));
+      records.splice(index,1);
       renderRecords();
+    };
+  });
+  document.querySelectorAll(".toggle-record").forEach(btn => {
+    btn.onclick = () => {
+      syncRecordsFromDom();
+      const index=Number(btn.dataset.index);
+      const key=recordUiKey(records[index]);
+      const card=btn.closest(".record");
+      if (card.classList.toggle("collapsed")) {
+        collapsedRecords.add(key);
+        btn.textContent="Show details";
+        btn.setAttribute("aria-expanded","false");
+      } else {
+        collapsedRecords.delete(key);
+        btn.textContent="Fold";
+        btn.setAttribute("aria-expanded","true");
+      }
     };
   });
   document.querySelectorAll('[data-field="materialNo"]').forEach(input => {
@@ -675,6 +704,10 @@ function syncRecordsFromDom() {
       records[i][input.dataset.field] = input.value.trim();
     }
   });
+}
+
+function recordUiKey(record) {
+  return normalizeId(record?.complaintNo)||normalizeId(record?.sourceFile);
 }
 
 function matchingRecordIndex(record) {
@@ -1169,7 +1202,19 @@ $("extractBtn").onclick=async()=>{
   }
 };
 
-$("clearBtn").onclick=()=>{ records=[]; renderRecords(); };
+$("foldAllBtn").onclick=()=>{
+  syncRecordsFromDom();
+  records.forEach(record=>collapsedRecords.add(recordUiKey(record)));
+  renderRecords();
+};
+
+$("unfoldAllBtn").onclick=()=>{
+  syncRecordsFromDom();
+  collapsedRecords.clear();
+  renderRecords();
+};
+
+$("clearBtn").onclick=()=>{ records=[]; collapsedRecords.clear(); renderRecords(); };
 
 $("historyBtn").onclick=async()=>{
   const lot=$("historyLot").value.trim();
