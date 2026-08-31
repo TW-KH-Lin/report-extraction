@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -42,12 +42,19 @@
           <p class="hint">Review the summary, standardized symptoms, problem type, LFA relevance, decisions, and structured test evidence before updating Excel.</p>
         </div>
         <div class="review-actions">
+          <button id="saveDraftBtn" class="primary">Save temporarily</button>
           <button id="foldAllBtn" class="secondary">Fold all</button>
           <button id="unfoldAllBtn" class="secondary">Show all</button>
           <button id="clearBtn" class="secondary">Clear extracted rows</button>
         </div>
       </div>
+      <div id="draftStatus" class="status"></div>
       <div id="records"></div>
+      <div class="lots-section">
+        <h3>Lots in current results</h3>
+        <p class="hint">This table summarizes the reviewed complaints currently waiting for Excel export.</p>
+        <div id="lotsTable"></div>
+      </div>
     </section>
 
     <section class="panel">
@@ -67,6 +74,25 @@
         Without an uploaded workbook, a new Excel file is created. Product-family sheets are rebuilt from all three categories,
         detailed assays are written to Extracted Test Evidence, and lot/symptom counts are written to Lot &amp; Symptom Summary.
       </p>
+      <fieldset class="sheet-selection">
+        <legend>Sheets to export</legend>
+        <div class="sheet-options">
+          <label><input type="checkbox" data-export-sheet value="Final Reports" checked /> Final Reports</label>
+          <label><input type="checkbox" data-export-sheet value="Ongoing - Email" checked /> Ongoing - Email</label>
+          <label><input type="checkbox" data-export-sheet value="Not in Detail Excel" checked /> Not in Detail Excel</label>
+          <label><input type="checkbox" data-export-sheet value="Extracted Test Evidence" checked /> Extracted Test Evidence</label>
+          <label><input type="checkbox" data-export-sheet value="Lot &amp; Symptom Summary" checked /> Lot &amp; Symptom Summary</label>
+          <label><input type="checkbox" data-export-sheet value="CN95" checked /> CN95</label>
+          <label><input type="checkbox" data-export-sheet value="CN140ub" checked /> CN140ub</label>
+          <label><input type="checkbox" data-export-sheet value="CN140" checked /> CN140</label>
+          <label><input type="checkbox" data-export-sheet value="CN110" checked /> CN110</label>
+          <label><input type="checkbox" data-export-sheet value="CN180" checked /> CN180</label>
+        </div>
+        <div class="sheet-actions">
+          <button id="selectAllSheetsBtn" type="button" class="secondary">Tick all</button>
+          <button id="clearAllSheetsBtn" type="button" class="secondary">Untick all</button>
+        </div>
+      </fieldset>
       <button id="buildBtn" class="primary">Create Excel file</button>
       <div id="buildStatus" class="status"></div>
     </section>
@@ -81,6 +107,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=14"></script>
+  <script type="module" src="./app.js?v=17"></script>
 </body>
 </html>

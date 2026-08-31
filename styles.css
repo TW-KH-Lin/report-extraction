@@ -47,6 +47,15 @@ button {
 .record-actions button, .review-actions button { margin-left:0; }
 .record.collapsed .record-head { margin-bottom:0; }
 .record.collapsed .record-body { display:none; }
+.lots-section { margin-top:20px; padding-top:16px; border-top:1px solid #dfe5ec; }
+.lots-section h3 { margin:0 0 5px; color:#17365d; font-size:16px; }
+.sheet-selection { margin:14px 0; border:1px solid #dfe5ec; border-radius:10px; padding:14px; }
+.sheet-selection legend { padding:0 7px; font-weight:750; color:#17365d; }
+.sheet-options { display:grid; grid-template-columns:repeat(3,minmax(180px,1fr)); gap:9px 18px; }
+.sheet-options label { display:flex; gap:8px; align-items:center; font-size:14px; }
+.sheet-options input[type="checkbox"] { width:auto; min-width:0; padding:0; accent-color:#2f5597; }
+.sheet-actions { display:flex; gap:8px; margin-top:14px; }
+.sheet-actions button { margin-left:0; }
 .grid {
   display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px;
 }
@@ -83,4 +92,5 @@ footer {
 @media(max-width: 700px) {
   .panel-title-row, .record-head { flex-direction:column; align-items:stretch; }
   .record-actions, .review-actions { flex-wrap:wrap; }
+  .sheet-options { grid-template-columns:1fr; }
 }

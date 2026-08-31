@@ -56,6 +56,9 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Add reports in later selections without replacing earlier extracted complaints
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
 - Fold or show individual extracted complaint cards, with Fold all and Show all controls
+- Save reviewed results temporarily in the same browser and restore them after refresh
+- Review a live lot summary table before export
+- Choose individual app-managed worksheets to include in the Excel download
 - Complaint number
 - Complaint registered date, report date and elapsed days
 - Material number

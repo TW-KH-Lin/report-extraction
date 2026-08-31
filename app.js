@@ -28,10 +28,15 @@ const EVIDENCE_HEADERS = [
   "Source Page","Case-specific Conditions / Source Detail","Source File"
 ];
 const SUMMARY_HEADERS = ["Lot","Complaint Count","Symptom","Symptom Count","Complaint Numbers"];
+const MANAGED_SHEETS = [...CATEGORY_SHEETS,EVIDENCE_SHEET,SUMMARY_SHEET,...FAMILY_SHEETS];
+const DRAFT_DB_NAME = "report-extraction-private-drafts";
+const DRAFT_STORE = "drafts";
+const DRAFT_KEY = "current-results";
 
 let workbookBuffer = null;
 let workbookMode = "standard";
 let records = [];
+let lastBuiltSheetNames = [];
 const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -658,6 +663,31 @@ function fieldSelect(name,label,options,cls="") {
   return `<div class="field ${cls}"><label>${label}</label><select data-field="${name}">${options}</select></div>`;
 }
 
+function currentLotRows() {
+  const lots=new Map();
+  for (const record of records) {
+    const lot=String(record.lot||"").trim()||"Lot not extracted";
+    if (!lots.has(lot)) lots.set(lot,{lot,complaints:new Set(),families:new Set(),symptoms:new Set(),statuses:new Set()});
+    const row=lots.get(lot);
+    row.complaints.add(record.complaintNo||record.sourceFile||"Unnumbered complaint");
+    const family=productFamily(record.materialNo)||record.productFamily||record.membraneType||"";
+    if (family) row.families.add(family);
+    const classification=complaintClassification(record.problem,record.customerReportedFailure);
+    for (const symptom of String(record.standardizedSymptoms||classification.standardizedSymptoms||"").split(";").map(x=>x.trim()).filter(Boolean)) row.symptoms.add(symptom);
+    if (record.resultStatus) row.statuses.add(record.resultStatus);
+  }
+  return [...lots.values()].sort((a,b)=>a.lot.localeCompare(b.lot,undefined,{numeric:true}));
+}
+
+function renderLotsTable() {
+  const target=$("lotsTable");
+  if (!target) return;
+  const rows=currentLotRows();
+  target.innerHTML=rows.length
+    ? `<div class="table-scroll"><table><thead><tr><th>Lot</th><th>Complaint count</th><th>Complaint number(s)</th><th>Product family</th><th>Standardized symptom(s)</th><th>Status</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.lot)}</td><td>${row.complaints.size}</td><td>${esc([...row.complaints].join("; "))}</td><td>${esc([...row.families].join("; "))}</td><td>${esc([...row.symptoms].join("; "))}</td><td>${esc([...row.statuses].join("; "))}</td></tr>`).join("")}</tbody></table></div>`
+    : `<p class="hint">No extracted lots yet.</p>`;
+}
+
 function renderRecords() {
   $("records").innerHTML = records.length
     ? records.map(recordCard).join("")
@@ -698,6 +728,10 @@ function renderRecords() {
       if (fam) card.querySelector('[data-field="productFamily"]').value=fam;
     });
   });
+  document.querySelectorAll(".record [data-field]").forEach(input=>{
+    input.addEventListener("change",()=>{syncRecordsFromDom();renderLotsTable();});
+  });
+  renderLotsTable();
 }
 
 function syncRecordsFromDom() {
@@ -721,6 +755,82 @@ function matchingRecordIndex(record) {
   }
   const source=normalizeId(record.sourceFile);
   return source ? records.findIndex(existing=>normalizeId(existing.sourceFile)===source) : -1;
+}
+
+function openDraftDatabase() {
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open(DRAFT_DB_NAME,1);
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      if (!db.objectStoreNames.contains(DRAFT_STORE)) db.createObjectStore(DRAFT_STORE,{keyPath:"id"});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error("Temporary browser storage is unavailable."));
+  });
+}
+
+async function saveTemporaryDraft() {
+  syncRecordsFromDom();
+  if (!records.length) throw new Error("Extract at least one complaint report before saving.");
+  const db=await openDraftDatabase();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(DRAFT_STORE,"readwrite");
+    tx.objectStore(DRAFT_STORE).put({
+      id:DRAFT_KEY,
+      records:structuredClone(records),
+      collapsed:[...collapsedRecords],
+      selectedSheets:[...selectedExportSheets()],
+      savedAt:new Date().toISOString()
+    });
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error("Could not save temporary results."));
+    tx.onabort=()=>reject(tx.error||new Error("Temporary save was interrupted."));
+  });
+  db.close();
+}
+
+async function readTemporaryDraft() {
+  const db=await openDraftDatabase();
+  const draft=await new Promise((resolve,reject)=>{
+    const tx=db.transaction(DRAFT_STORE,"readonly");
+    const request=tx.objectStore(DRAFT_STORE).get(DRAFT_KEY);
+    request.onsuccess=()=>resolve(request.result||null);
+    request.onerror=()=>reject(request.error||new Error("Could not restore temporary results."));
+  });
+  db.close();
+  return draft;
+}
+
+async function deleteTemporaryDraft() {
+  const db=await openDraftDatabase();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(DRAFT_STORE,"readwrite");
+    tx.objectStore(DRAFT_STORE).delete(DRAFT_KEY);
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error("Could not clear temporary results."));
+  });
+  db.close();
+}
+
+async function restoreTemporaryDraft() {
+  try {
+    const draft=await readTemporaryDraft();
+    if (!draft?.records?.length || records.length) return;
+    records=draft.records;
+    collapsedRecords.clear();
+    for (const key of draft.collapsed||[]) collapsedRecords.add(key);
+    if (Array.isArray(draft.selectedSheets)) {
+      const selected=new Set(draft.selectedSheets);
+      document.querySelectorAll("[data-export-sheet]").forEach(input=>{input.checked=selected.has(input.value);});
+    }
+    renderRecords();
+    const savedTime=draft.savedAt?new Date(draft.savedAt).toLocaleString():"an earlier session";
+    $("draftStatus").className="status good";
+    $("draftStatus").textContent=`Restored ${records.length} temporarily saved complaint(s) from ${savedTime}.`;
+  } catch(err) {
+    $("draftStatus").className="status bad";
+    $("draftStatus").textContent=`Temporary restore unavailable: ${err.message}`;
+  }
 }
 
 async function loadWorkbook(buffer) {
@@ -863,6 +973,15 @@ function writeSheet(ws, headers, rows, hasSource=false) {
 
 function normalizeId(v) { return String(v||"").trim().toLowerCase(); }
 
+function selectedExportSheets() {
+  return new Set([...document.querySelectorAll("[data-export-sheet]:checked")].map(input=>input.value).filter(name=>MANAGED_SHEETS.includes(name)));
+}
+
+function removeSheetIfPresent(wb,name) {
+  const sheet=wb.getWorksheet(name);
+  if (sheet) wb.removeWorksheet(sheet.id);
+}
+
 function recordToCategoryRow(r) {
   const fam = productFamily(r.materialNo) || r.productFamily || "";
   const classification=complaintClassification(r.problem,r.customerReportedFailure);
@@ -930,6 +1049,8 @@ function sortFamily(rows) {
 async function buildUpdatedWorkbook() {
   syncRecordsFromDom();
   if (!records.length) throw new Error("Extract at least one complaint report first.");
+  const selectedSheets=selectedExportSheets();
+  if (!selectedSheets.size) throw new Error("Tick at least one sheet to export.");
   let wb;
   if (!workbookBuffer) {
     wb=new ExcelJS.Workbook();
@@ -945,7 +1066,7 @@ async function buildUpdatedWorkbook() {
   }
 
   const categoryRows={};
-  for (const name of CATEGORY_SHEETS) categoryRows[name]=sheetRows(ensureSheet(wb,name));
+  for (const name of CATEGORY_SHEETS) categoryRows[name]=sheetRows(wb.getWorksheet(name));
 
   for (const r of records) {
     const id=normalizeId(r.complaintNo);
@@ -958,19 +1079,23 @@ async function buildUpdatedWorkbook() {
   }
 
   for (const name of CATEGORY_SHEETS) {
-    const ws=ensureSheet(wb,name);
-    writeSheet(ws,CATEGORY_HEADERS,sortCategory(categoryRows[name]),false);
+    if (selectedSheets.has(name)) {
+      const ws=ensureSheet(wb,name);
+      writeSheet(ws,CATEGORY_HEADERS,sortCategory(categoryRows[name]),false);
+    } else removeSheetIfPresent(wb,name);
   }
 
-  let evidenceRows=sheetRows(ensureSheet(wb,EVIDENCE_SHEET));
+  let evidenceRows=sheetRows(wb.getWorksheet(EVIDENCE_SHEET));
   for (const r of records) {
     const id=normalizeId(r.complaintNo);
     if (!id) continue;
     evidenceRows=evidenceRows.filter(x=>normalizeId(x["Complaint / Notification"])!==id);
     evidenceRows.push(...recordToEvidenceRows(r));
   }
-  writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
-  writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
+  if (selectedSheets.has(EVIDENCE_SHEET)) writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
+  else removeSheetIfPresent(wb,EVIDENCE_SHEET);
+  if (selectedSheets.has(SUMMARY_SHEET)) writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
+  else removeSheetIfPresent(wb,SUMMARY_SHEET);
 
   const familyRows=Object.fromEntries(FAMILY_SHEETS.map(f=>[f,[]]));
   const labels={"Final Reports":"Final Report","Ongoing - Email":"Ongoing - Email","Not in Detail Excel":"Not in Detail Excel"};
@@ -983,10 +1108,14 @@ async function buildUpdatedWorkbook() {
     }
   }
   for (const fam of FAMILY_SHEETS) {
-    const ws=ensureSheet(wb,fam);
-    writeSheet(ws,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
+    if (selectedSheets.has(fam)) {
+      const ws=ensureSheet(wb,fam);
+      writeSheet(ws,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
+    } else removeSheetIfPresent(wb,fam);
   }
 
+  if (!wb.worksheets.length) throw new Error("The selected export would contain no worksheets.");
+  lastBuiltSheetNames=wb.worksheets.map(sheet=>sheet.name);
   const out=await wb.xlsx.writeBuffer();
   return out;
 }
@@ -1217,7 +1346,35 @@ $("unfoldAllBtn").onclick=()=>{
   renderRecords();
 };
 
-$("clearBtn").onclick=()=>{ records=[]; collapsedRecords.clear(); renderRecords(); };
+$("saveDraftBtn").onclick=async()=>{
+  $("draftStatus").className="status";
+  $("draftStatus").textContent="Saving locally in this browser...";
+  try {
+    await saveTemporaryDraft();
+    $("draftStatus").className="status good";
+    $("draftStatus").textContent=`Saved ${records.length} complaint(s) temporarily in this browser. Nothing was uploaded.`;
+  } catch(err) {
+    $("draftStatus").className="status bad";
+    $("draftStatus").textContent=err.message;
+  }
+};
+
+$("clearBtn").onclick=async()=>{
+  records=[];
+  collapsedRecords.clear();
+  renderRecords();
+  try { await deleteTemporaryDraft(); } catch (_) {}
+  $("draftStatus").className="status";
+  $("draftStatus").textContent="Current and temporarily saved results were cleared.";
+};
+
+$("selectAllSheetsBtn").onclick=()=>{
+  document.querySelectorAll("[data-export-sheet]").forEach(input=>{input.checked=true;});
+};
+
+$("clearAllSheetsBtn").onclick=()=>{
+  document.querySelectorAll("[data-export-sheet]").forEach(input=>{input.checked=false;});
+};
 
 $("historyBtn").onclick=async()=>{
   const lot=$("historyLot").value.trim();
@@ -1240,11 +1397,12 @@ $("buildBtn").onclick=async()=>{
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     $("buildStatus").className="status good";
-    $("buildStatus").textContent=workbookMode==="standard"
+    const prefix=workbookMode==="standard"
       ?"Updated workbook created and downloaded."
       :workbookMode==="reference-readonly"
         ?"New extracted workbook created. The reference workbook was not changed."
         :"New Excel workbook created and downloaded from the extracted reports.";
+    $("buildStatus").textContent=`${prefix} Workbook sheets (${lastBuiltSheetNames.length}): ${lastBuiltSheetNames.join(", ")}.`;
   } catch(err) {
     $("buildStatus").className="status bad";
     $("buildStatus").textContent=err.message;
@@ -1252,8 +1410,19 @@ $("buildBtn").onclick=async()=>{
 };
 
 renderRecords();
+restoreTemporaryDraft();
 
 window.__reportExtractionDebug = {
   getRecords: () => records.map(r=>structuredClone(r)),
+  getLotRows: () => currentLotRows().map(row=>({
+    lot:row.lot,
+    complaintCount:row.complaints.size,
+    complaints:[...row.complaints],
+    families:[...row.families],
+    symptoms:[...row.symptoms],
+    statuses:[...row.statuses]
+  })),
+  getSelectedSheets: () => [...selectedExportSheets()],
+  getLastBuiltSheetNames: () => [...lastBuiltSheetNames],
   parseRecord
 };
