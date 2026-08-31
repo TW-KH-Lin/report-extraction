@@ -590,7 +590,7 @@ function recordCard(r, index) {
         <button class="secondary remove-record" data-index="${index}">Remove</button>
       </div>
     </div>
-    <div class="record-body">
+    <div class="record-body"${collapsed?" hidden":""}>
     <div class="grid">
       ${fieldSelect("sourceGroup","Category",groupOptions)}
       ${field("complaintNo","Complaint / Notification",r.complaintNo)}
@@ -677,12 +677,15 @@ function renderRecords() {
       const index=Number(btn.dataset.index);
       const key=recordUiKey(records[index]);
       const card=btn.closest(".record");
+      const body=card.querySelector(".record-body");
       if (card.classList.toggle("collapsed")) {
         collapsedRecords.add(key);
+        body.hidden=true;
         btn.textContent="Show details";
         btn.setAttribute("aria-expanded","false");
       } else {
         collapsedRecords.delete(key);
+        body.hidden=false;
         btn.textContent="Fold";
         btn.setAttribute("aria-expanded","true");
       }
