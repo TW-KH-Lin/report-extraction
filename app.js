@@ -32,11 +32,33 @@ const MANAGED_SHEETS = [...CATEGORY_SHEETS,EVIDENCE_SHEET,SUMMARY_SHEET,...FAMIL
 const DRAFT_DB_NAME = "report-extraction-private-drafts";
 const DRAFT_STORE = "drafts";
 const DRAFT_KEY = "current-results";
+const SUMMARY_FIELDS = [
+  {key:"complaintNo",label:"Complaint Number",essential:true},
+  {key:"lot",label:"Lot(s)",essential:true},
+  {key:"lotComplaintCount",label:"Complaints Related to Lot",essential:true},
+  {key:"customer",label:"End Customer",essential:true},
+  {key:"productFamily",label:"Product Family",essential:true},
+  {key:"materialNo",label:"Material No."},
+  {key:"problem",label:"Reason / Problem",essential:true},
+  {key:"standardizedSymptoms",label:"Standardized Symptom(s)"},
+  {key:"problemType",label:"Problem Type"},
+  {key:"result",label:"Final Result / Status",essential:true},
+  {key:"tests",label:"Tests Performed",essential:true},
+  {key:"rollsImplicated",label:"Rolls Implicated"},
+  {key:"samplesReceived",label:"Samples Received"},
+  {key:"registeredDate",label:"Registered Date"},
+  {key:"reportDate",label:"Report Date"},
+  {key:"days",label:"Days"},
+  {key:"sourceSheets",label:"Source Worksheet(s)"}
+];
 
 let workbookBuffer = null;
 let workbookMode = "standard";
+let workbookFileName = "";
 let records = [];
 let lastBuiltSheetNames = [];
+let summaryDataset = [];
+let summarySources = [];
 const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -917,6 +939,279 @@ function sheetRows(ws) {
   return out;
 }
 
+function displayCellValue(value) {
+  if (value===null || value===undefined) return "";
+  if (value instanceof Date) return value.toLocaleDateString("en-GB");
+  if (typeof value==="object") {
+    if (value.text!==undefined) return String(value.text);
+    if (value.result!==undefined) return displayCellValue(value.result);
+    if (Array.isArray(value.richText)) return value.richText.map(part=>part.text||"").join("");
+  }
+  return String(value).trim();
+}
+
+function normalizeHeader(value) {
+  return displayCellValue(value).toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g," ").trim();
+}
+
+function worksheetMatrix(ws) {
+  const rows=[];
+  if (!ws) return rows;
+  for (let r=1;r<=ws.rowCount;r++) {
+    const values=[];
+    for (let c=1;c<=ws.columnCount;c++) values.push(displayCellValue(ws.getCell(r,c).value));
+    rows.push(values);
+  }
+  return rows;
+}
+
+function detectComplaintHeaderRow(matrix) {
+  let best={index:-1,score:0};
+  const clues=[
+    /complaint|notification/,/\blot\b|batch/,/customer/,/problem|symptom|issue/,
+    /result|status|conclusion/,/test|assay/,/material/,/report date|registered date/
+  ];
+  matrix.slice(0,12).forEach((row,index)=>{
+    const headers=row.map(normalizeHeader).filter(Boolean);
+    const score=clues.reduce((sum,re)=>sum+(headers.some(header=>re.test(header))?1:0),0);
+    if (score>best.score) best={index,score};
+  });
+  return best.score>=2?best.index:-1;
+}
+
+function objectsFromMatrix(matrix, headerIndex) {
+  if (headerIndex<0) return [];
+  const headers=(matrix[headerIndex]||[]).map(displayCellValue);
+  const rows=[];
+  for (let r=headerIndex+1;r<matrix.length;r++) {
+    const values=matrix[r]||[];
+    if (!values.some(value=>displayCellValue(value))) continue;
+    const row={};
+    headers.forEach((header,index)=>{if(header) row[header]=displayCellValue(values[index]);});
+    rows.push(row);
+  }
+  return rows;
+}
+
+const SUMMARY_ALIASES = {
+  complaintNo:["complaint notification","complaint number","complaint no","complaint","notification","complaint #"],
+  lot:["lot","lots","lot no","lot number","batch","batch no","batch number"],
+  customer:["customer company","end customer","customer","company name","company"],
+  productFamily:["product family","membrane type","product"],
+  materialNo:["material no","material number","article no","article number"],
+  problem:["problem","problems","reported symptom","complaint symptom","issue description","formal issue description","customer reported failure","reason"],
+  standardizedSymptoms:["standardized symptoms","standardized symptom"],
+  problemType:["problem type"],
+  result:["result status","result","complaint status","final result","final assessment root cause","final scope decision","conclusion"],
+  tests:["tests assays applied","tests performed","test performed","assays applied","standard test","test","assay"],
+  rollsImplicated:["rolls implicated","implicated units","units implicated","number of roll implicated"],
+  samplesReceived:["samples received","sample received","number of sample received"],
+  registeredDate:["complaint registered date","registered date","registration date"],
+  reportDate:["report date","final report date"],
+  days:["days","elapsed days"]
+};
+
+function valueByAliases(row, aliases) {
+  const entries=Object.entries(row).map(([header,value])=>[normalizeHeader(header),displayCellValue(value)]);
+  for (const alias of aliases) {
+    const exact=entries.find(([header])=>header===alias);
+    if (exact?.[1]) return exact[1];
+  }
+  return "";
+}
+
+function summaryRowFromObject(row, sourceSheet) {
+  const result={sourceSheets:sourceSheet};
+  for (const [key,aliases] of Object.entries(SUMMARY_ALIASES)) result[key]=valueByAliases(row,aliases);
+  const familyFromMaterial=productFamily(result.materialNo);
+  const familyFromText=String(result.productFamily||"").match(/CN140ub|CN140|CN180|CN110|CN95/i)?.[0]||"";
+  result.productFamily=familyFromMaterial||familyFromText.replace(/^cn/i,"CN").replace(/ub$/i,"ub");
+  for (const key of ["registeredDate","reportDate"]) {
+    if (/^\d{5}(?:\.\d+)?$/.test(result[key])) {
+      const date=new Date(Date.UTC(1899,11,30)+Number(result[key])*86400000);
+      result[key]=date.toLocaleDateString("en-GB");
+    }
+  }
+  return result;
+}
+
+function splitUniqueValues(value) {
+  return String(value||"").split(/\s*;\s*|\n+/).map(item=>item.trim()).filter(Boolean);
+}
+
+function mergeSummaryValue(current,incoming) {
+  const values=[...splitUniqueValues(current),...splitUniqueValues(incoming)];
+  return [...new Set(values.map(value=>value.trim()).filter(Boolean))].join("; ");
+}
+
+function mergeSummaryRows(target,incoming) {
+  for (const key of Object.keys(incoming)) {
+    if (key==="lotComplaintCount") continue;
+    if (["registeredDate","reportDate","days"].includes(key) && target[key]) continue;
+    target[key]=mergeSummaryValue(target[key],incoming[key]);
+  }
+  return target;
+}
+
+function shouldIncludeSummaryRow(row,sourceSheet) {
+  if (row.complaintNo) return true;
+  if (/test|evidence|guide|simple|summary/i.test(sourceSheet)) return false;
+  return Boolean(row.lot && (row.problem || row.result || row.customer));
+}
+
+function complaintKey(row,index) {
+  const complaint=normalizeId(row.complaintNo);
+  if (complaint) return `complaint:${complaint}`;
+  const lot=normalizeId(row.lot), problem=normalizeId(row.problem), result=normalizeId(row.result);
+  return lot||problem?`unidentified:${lot}|${problem}|${result}`:`row:${index}`;
+}
+
+function recordToSummaryRow(record) {
+  const category=recordToCategoryRow(record);
+  return {
+    complaintNo:displayCellValue(category["Complaint / Notification"]),
+    lot:displayCellValue(category["Lot"]),
+    customer:displayCellValue(category["Customer Company"]),
+    productFamily:displayCellValue(category["Product Family"]),
+    materialNo:displayCellValue(category["Material No."]),
+    problem:displayCellValue(category["Problem"]||category["Customer Reported Failure"]),
+    standardizedSymptoms:displayCellValue(category["Standardized Symptom(s)"]),
+    problemType:displayCellValue(category["Problem Type"]),
+    result:displayCellValue(category["Result / Status"]||category["Final Assessment / Root Cause"]),
+    tests:displayCellValue(category["Tests / Assays Applied"]),
+    rollsImplicated:displayCellValue(category["Rolls Implicated"]),
+    samplesReceived:displayCellValue(category["Samples Received"]),
+    registeredDate:displayCellValue(category["Complaint Registered Date"]),
+    reportDate:displayCellValue(category["Report Date"]),
+    days:displayCellValue(category["Days"]),
+    sourceSheets:"Current extraction"
+  };
+}
+
+function lotTokens(value) {
+  return String(value||"").split(/\s*;\s*|\s*,\s*|\n+/).map(item=>item.trim()).filter(Boolean);
+}
+
+async function appendWorkbookComplaintRows(raw,buffer,fileName) {
+  const sourceLabel=sheetName=>fileName?`${fileName} › ${sheetName}`:sheetName;
+  try {
+    const wb=await loadWorkbook(buffer.slice(0));
+    for (const ws of wb.worksheets) {
+      if (ws.name===SUMMARY_SHEET || /syndrome.*(?:guide|simple)/i.test(ws.name)) continue;
+      const matrix=worksheetMatrix(ws);
+      const headerIndex=detectComplaintHeaderRow(matrix);
+      for (const row of objectsFromMatrix(matrix,headerIndex)) {
+        const normalized=summaryRowFromObject(row,sourceLabel(ws.name));
+        if (shouldIncludeSummaryRow(normalized,ws.name)) raw.push(normalized);
+      }
+    }
+  } catch (_) {
+    const sheets=await readReferenceWorkbook(buffer.slice(0));
+    for (const [sheetName,matrixWithBlank] of Object.entries(sheets)) {
+      if (sheetName===SUMMARY_SHEET || /syndrome.*(?:guide|simple)/i.test(sheetName)) continue;
+      const matrix=[];
+      for (let i=0;i<matrixWithBlank.length;i++) matrix.push(matrixWithBlank[i]||[]);
+      const headerIndex=detectComplaintHeaderRow(matrix);
+      for (const row of objectsFromMatrix(matrix,headerIndex)) {
+        const normalized=summaryRowFromObject(row,sourceLabel(sheetName));
+        if (shouldIncludeSummaryRow(normalized,sheetName)) raw.push(normalized);
+      }
+    }
+  }
+}
+
+async function extractSummarySourceRecords(source) {
+  if (source.records) return source.records;
+  const expanded=[];
+  if (/\.zip$/i.test(source.name)) {
+    const zip=await JSZip.loadAsync(source.buffer.slice(0));
+    for (const [name,entry] of Object.entries(zip.files)) {
+      if (!entry.dir && /\.(pdf|msg)$/i.test(name)) expanded.push({name:name.split("/").pop(),buffer:await entry.async("arraybuffer")});
+    }
+  } else expanded.push({name:source.name,buffer:source.buffer});
+  source.records=[];
+  source.errors=[];
+  for (const item of expanded) {
+    try { source.records.push(await extractOne(item.name,item.buffer)); }
+    catch(err) { source.errors.push(`${item.name}: ${err.message}`); }
+  }
+  return source.records;
+}
+
+async function collectComplaintDataset() {
+  const raw=[];
+  if (workbookBuffer) await appendWorkbookComplaintRows(raw,workbookBuffer,workbookFileName);
+  for (const source of summarySources.filter(item=>item.kind==="workbook")) {
+    await appendWorkbookComplaintRows(raw,source.buffer,source.name);
+  }
+  for (const source of summarySources.filter(item=>item.kind==="report")) {
+    raw.push(...(await extractSummarySourceRecords(source)).map(record=>({...recordToSummaryRow(record),sourceSheets:source.name})));
+  }
+  syncRecordsFromDom();
+  raw.push(...records.map(recordToSummaryRow));
+
+  const merged=new Map();
+  raw.forEach((row,index)=>{
+    const key=complaintKey(row,index);
+    if (!merged.has(key)) merged.set(key,{...row});
+    else mergeSummaryRows(merged.get(key),row);
+  });
+  const dataset=[...merged.values()];
+  const lotCounts=new Map();
+  dataset.forEach((row,index)=>{
+    const uniqueComplaint=normalizeId(row.complaintNo);
+    if (!uniqueComplaint) return;
+    for (const lot of new Set(lotTokens(row.lot))) {
+      if (!lotCounts.has(lot)) lotCounts.set(lot,new Set());
+      lotCounts.get(lot).add(uniqueComplaint);
+    }
+  });
+  for (const row of dataset) {
+    const counts=lotTokens(row.lot).map(lot=>({lot,count:lotCounts.get(lot)?.size||0}));
+    row.lotComplaintCount=counts.length===1?String(counts[0].count):counts.map(item=>`${item.lot}: ${item.count}`).join("; ");
+  }
+  return dataset.sort((a,b)=>String(a.complaintNo||"").localeCompare(String(b.complaintNo||""),undefined,{numeric:true})||String(a.lot||"").localeCompare(String(b.lot||""),undefined,{numeric:true}));
+}
+
+function selectedSummaryFields() {
+  const selected=new Set([...document.querySelectorAll("[data-summary-field]:checked")].map(input=>input.value));
+  return SUMMARY_FIELDS.filter(field=>selected.has(field.key));
+}
+
+function renderDatasetTable(rows,fields) {
+  if (!rows.length) return `<p class="status good">No matching complaint information found.</p>`;
+  if (!fields.length) return `<p class="status bad">Tick at least one information field to display.</p>`;
+  return `<table class="summary-table"><thead><tr>${fields.map(field=>`<th>${esc(field.label)}</th>`).join("")}</tr></thead><tbody>${rows.map(row=>`<tr>${fields.map(field=>`<td>${esc(row[field.key]||"")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function renderSummaryMetrics(dataset) {
+  const lots=new Set(dataset.flatMap(row=>lotTokens(row.lot)));
+  const customers=new Set(dataset.flatMap(row=>splitUniqueValues(row.customer)));
+  const tested=dataset.filter(row=>row.tests).length;
+  $("summaryMetrics").innerHTML=`
+    <div class="metric"><strong>${dataset.length}</strong><span>unique complaint${dataset.length===1?"":"s"}</span></div>
+    <div class="metric"><strong>${lots.size}</strong><span>complaint lot${lots.size===1?"":"s"}</span></div>
+    <div class="metric"><strong>${customers.size}</strong><span>end customer${customers.size===1?"":"s"}</span></div>
+    <div class="metric"><strong>${tested}</strong><span>complaint${tested===1?"":"s"} with tests listed</span></div>`;
+}
+
+async function refreshSummary() {
+  $("summaryResult").innerHTML=`<p class="status">Reading workbook and building summary...</p>`;
+  try {
+    summaryDataset=await collectComplaintDataset();
+    renderSummaryMetrics(summaryDataset);
+    $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+    $("summaryExcelStatus").className="status good";
+    const sourceCount=summarySources.length+(workbookBuffer?1:0);
+    const errorCount=summarySources.reduce((sum,source)=>sum+(source.errors?.length||0),0);
+    $("summaryExcelStatus").textContent=`Summary ready: ${summaryDataset.length} unique complaint(s) from ${sourceCount||"current"} source file(s)${errorCount?`; ${errorCount} report(s) could not be read`:""}.`;
+  } catch(err) {
+    $("summaryExcelStatus").className="status bad";
+    $("summaryExcelStatus").textContent=`Could not create summary: ${err.message}`;
+    $("summaryResult").innerHTML="";
+  }
+}
+
 function ensureSheet(wb,name) {
   return wb.getWorksheet(name) || wb.addWorksheet(name);
 }
@@ -1263,26 +1558,60 @@ function historyTable(rows) {
   </tbody></table>`;
 }
 
-$("excelFile").addEventListener("change", async e=>{
-  const file=e.target.files?.[0];
+async function handleWorkbookSelection(file) {
   if (!file) return;
   workbookBuffer=await file.arrayBuffer();
+  workbookFileName=file.name;
+  summaryDataset=[];
   try {
     const wb=await loadWorkbook(workbookBuffer.slice(0));
     workbookMode="standard";
-    $("excelStatus").className="status good";
-    $("excelStatus").textContent=`Loaded ${file.name} (${wb.worksheets.length} sheets).`;
+    for (const id of ["excelStatus","summaryExcelStatus"]) {
+      $(id).className="status good";
+      $(id).textContent=`Loaded ${file.name} (${wb.worksheets.length} sheets).`;
+    }
   } catch(err) {
     if (await isValidXlsxContainer(workbookBuffer)) {
       workbookMode="reference-readonly";
-      $("excelStatus").className="status good";
-      $("excelStatus").textContent=`Loaded ${file.name} as a protected reference. The app will create a new extracted workbook and leave the original unchanged.`;
+      for (const id of ["excelStatus","summaryExcelStatus"]) {
+        $(id).className="status good";
+        $(id).textContent=`Loaded ${file.name} as a protected reference. The app will read it locally and leave the original unchanged.`;
+      }
     } else {
       workbookBuffer=null;
-      $("excelStatus").className="status bad";
-      $("excelStatus").textContent=`Could not read workbook: ${err.message}`;
+      workbookFileName="";
+      for (const id of ["excelStatus","summaryExcelStatus"]) {
+        $(id).className="status bad";
+        $(id).textContent=`Could not read workbook: ${err.message}`;
+      }
     }
   }
+}
+
+$("excelFile").addEventListener("change", async e=>{
+  await handleWorkbookSelection(e.target.files?.[0]);
+});
+
+$("summarySourceFiles").addEventListener("change", async e=>{
+  const files=[...(e.target.files||[])];
+  if (!files.length) return;
+  $("summaryExcelStatus").className="status";
+  $("summaryExcelStatus").textContent="Reading selected source files locally...";
+  let added=0, failed=0;
+  for (const file of files) {
+    const kind=/\.xlsx$/i.test(file.name)?"workbook":/\.(pdf|msg|zip)$/i.test(file.name)?"report":"";
+    if (!kind) continue;
+    const key=`${file.name}|${file.size}|${file.lastModified}`;
+    if (summarySources.some(source=>source.key===key)) continue;
+    try {
+      summarySources.push({key,name:file.name,kind,buffer:await file.arrayBuffer(),records:null,errors:[]});
+      added++;
+    } catch (_) { failed++; }
+  }
+  summaryDataset=[];
+  e.target.value="";
+  $("summaryExcelStatus").className=failed?"status bad":"status good";
+  $("summaryExcelStatus").textContent=`Selected ${summarySources.length} summary source file(s) (${added} newly added)${failed?`; ${failed} file(s) were unavailable`:""}. Choose more files or create the summary.`;
 });
 
 $("extractBtn").onclick=async()=>{
@@ -1409,6 +1738,96 @@ $("buildBtn").onclick=async()=>{
   }
 };
 
+function showAppView(viewId) {
+  document.querySelectorAll(".app-view").forEach(view=>{view.hidden=view.id!==viewId;});
+  document.querySelectorAll("[data-app-tab]").forEach(button=>{
+    const active=button.dataset.appTab===viewId;
+    button.classList.toggle("active",active);
+    button.setAttribute("aria-selected",String(active));
+  });
+}
+
+document.querySelectorAll("[data-app-tab]").forEach(button=>{
+  button.addEventListener("click",()=>showAppView(button.dataset.appTab));
+});
+
+function renderSummaryFieldOptions() {
+  $("summaryFieldOptions").innerHTML=SUMMARY_FIELDS.map(field=>`
+    <label><input type="checkbox" data-summary-field value="${esc(field.key)}" ${field.essential?"checked":""} /> ${esc(field.label)}</label>`).join("");
+  document.querySelectorAll("[data-summary-field]").forEach(input=>{
+    input.addEventListener("change",()=>{
+      if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+    });
+  });
+}
+
+$("summaryBasicBtn").onclick=()=>{
+  const essentials=new Set(SUMMARY_FIELDS.filter(field=>field.essential).map(field=>field.key));
+  document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=essentials.has(input.value);});
+  if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+};
+
+$("summaryAllBtn").onclick=()=>{
+  document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=true;});
+  if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+};
+
+$("summaryBtn").onclick=refreshSummary;
+
+$("clearSummaryFilesBtn").onclick=()=>{
+  summarySources=[];
+  summaryDataset=[];
+  $("summarySourceFiles").value="";
+  $("summaryExcelStatus").className="status";
+  $("summaryExcelStatus").textContent="Selected summary source files were cleared. The export workbook and extracted reports were not changed.";
+  $("summaryMetrics").innerHTML="";
+  $("summaryResult").innerHTML="";
+};
+
+const SEARCH_RESULT_FIELDS = SUMMARY_FIELDS.filter(field=>[
+  "complaintNo","lot","lotComplaintCount","customer","productFamily","materialNo","problem",
+  "result","tests","rollsImplicated","samplesReceived","registeredDate","reportDate","sourceSheets"
+].includes(field.key));
+
+async function runQuickSearch() {
+  const query=$("searchQuery").value.trim().toLowerCase();
+  if (!query) {
+    $("searchStatus").className="status bad";
+    $("searchStatus").textContent="Enter a complaint number, lot, customer, or search text.";
+    $("searchResult").innerHTML="";
+    return;
+  }
+  $("searchStatus").className="status";
+  $("searchStatus").textContent="Searching workbook and current extracted reports...";
+  try {
+    summaryDataset=await collectComplaintDataset();
+    const searchType=$("searchType").value;
+    const matches=summaryDataset.filter(row=>{
+      if (searchType==="complaintNo") return String(row.complaintNo||"").toLowerCase().includes(query);
+      if (searchType==="lot") return lotTokens(row.lot).some(lot=>lot.toLowerCase().includes(query));
+      if (searchType==="customer") return String(row.customer||"").toLowerCase().includes(query);
+      return SUMMARY_FIELDS.some(field=>String(row[field.key]||"").toLowerCase().includes(query));
+    });
+    $("searchStatus").className="status good";
+    $("searchStatus").textContent=`Found ${matches.length} matching complaint${matches.length===1?"":"s"}.`;
+    $("searchResult").innerHTML=renderDatasetTable(matches,SEARCH_RESULT_FIELDS);
+  } catch(err) {
+    $("searchStatus").className="status bad";
+    $("searchStatus").textContent=`Search failed: ${err.message}`;
+    $("searchResult").innerHTML="";
+  }
+}
+
+$("searchBtn").onclick=runQuickSearch;
+$("searchQuery").addEventListener("keydown",event=>{
+  if (event.key==="Enter") runQuickSearch();
+});
+$("searchType").addEventListener("change",()=>{
+  const placeholders={complaintNo:"Enter complaint number",lot:"Enter lot number",customer:"Enter end customer",any:"Enter any text"};
+  $("searchQuery").placeholder=placeholders[$("searchType").value];
+});
+
+renderSummaryFieldOptions();
 renderRecords();
 restoreTemporaryDraft();
 
@@ -1424,5 +1843,8 @@ window.__reportExtractionDebug = {
   })),
   getSelectedSheets: () => [...selectedExportSheets()],
   getLastBuiltSheetNames: () => [...lastBuiltSheetNames],
+  getSummaryDataset: () => summaryDataset.map(row=>structuredClone(row)),
+  getSummarySources: () => summarySources.map(source=>({name:source.name,kind:source.kind,recordCount:source.records?.length||0,errorCount:source.errors?.length||0})),
+  collectComplaintDataset,
   parseRecord
 };
