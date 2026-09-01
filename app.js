@@ -1793,7 +1793,9 @@ function showAppView(viewId) {
 document.querySelectorAll("[data-app-tab]").forEach(button=>{
   button.addEventListener("click",()=>{
     showAppView(button.dataset.appTab);
-    if (button.dataset.appTab==="searchView") refreshSearchChoices();
+    if (button.dataset.appTab==="searchView") {
+      refreshSearchChoices().then(()=>refreshDecisionSymptomChoices());
+    }
   });
 });
 
@@ -1855,6 +1857,64 @@ const SEARCH_RESULT_FIELDS = SUMMARY_FIELDS.filter(field=>[
 function matchesSearchFamily(row,family) {
   if (!family) return true;
   return splitUniqueValues(row.productFamily).some(value=>value.toLowerCase()===family.toLowerCase());
+}
+
+function symptomTokensForRow(row) {
+  const listed=splitUniqueValues(row.standardizedSymptoms).filter(value=>value.toLowerCase()!=="review required");
+  if (listed.length) return listed;
+  const inferred=splitUniqueValues(complaintClassification(row.problem||"","").standardizedSymptoms)
+    .filter(value=>value.toLowerCase()!=="review required");
+  return inferred;
+}
+
+function refreshDecisionSymptomChoices() {
+  const symptomSelect=$("decisionSymptom");
+  const previous=symptomSelect.value;
+  const family=$("decisionFamily").value;
+  const symptoms=new Map();
+  for (const row of summaryDataset.filter(row=>matchesSearchFamily(row,family))) {
+    symptomTokensForRow(row).forEach(symptom=>{
+      const key=symptom.toLowerCase();
+      if (!symptoms.has(key)) symptoms.set(key,symptom);
+    });
+  }
+  const sorted=[...symptoms.values()].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  symptomSelect.innerHTML=`<option value="">Choose a symptom</option>${sorted.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+  if (sorted.includes(previous)) symptomSelect.value=previous;
+  symptomSelect.disabled=!sorted.length;
+  $("decisionSearchStatus").className=sorted.length?"status good":"status bad";
+  $("decisionSearchStatus").textContent=sorted.length
+    ?`${sorted.length} symptom${sorted.length===1?"":"s"} available${family?` for ${family}`:""}.`
+    :`No symptoms are available${family?` for ${family}`:""}. Load source files in Workbook Summary first.`;
+  $("decisionSearchResult").innerHTML="";
+}
+
+function renderDecisionSearch(rows) {
+  const testCounts=new Map();
+  for (const row of rows) {
+    for (const test of new Set(splitUniqueValues(row.tests))) {
+      testCounts.set(test,(testCounts.get(test)||0)+1);
+    }
+  }
+  const commonTests=[...testCounts.entries()]
+    .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))
+    .slice(0,6);
+  const reference=commonTests.length
+    ?commonTests.map(([test,count])=>`${esc(test)} (${count} case${count===1?"":"s"})`).join(" · ")
+    :"No tests were recorded for these matching complaints.";
+  return `<div class="decision-reference"><strong>Historical test reference</strong>${reference}
+    <small>Use this as a history lookup; the appropriate test plan still depends on the current sample and investigation.</small></div>
+    <table class="summary-table"><thead><tr>
+      <th>Complaint Number</th><th>Lot(s)</th><th>Product Family</th><th>Symptom(s)</th><th>Reason / Problem</th><th>Tests Performed</th><th>Final Result / Status</th>
+    </tr></thead><tbody>${rows.map(row=>`<tr>
+      <td>${esc(row.complaintNo||"Complaint number unavailable")}</td>
+      <td>${esc(row.lot||"")}</td>
+      <td>${esc(row.productFamily||"")}</td>
+      <td>${esc(symptomTokensForRow(row).join("; "))}</td>
+      <td>${esc(row.problem||"")}</td>
+      <td>${esc(row.tests||"Not recorded in workbook")}</td>
+      <td>${esc(row.result||"Not recorded in workbook")}</td>
+    </tr>`).join("")}</tbody></table>`;
 }
 
 async function refreshSearchChoices() {
@@ -1919,9 +1979,31 @@ async function runQuickSearch() {
   }
 }
 
+function runDecisionSearch() {
+  const symptom=$("decisionSymptom").value.trim();
+  const family=$("decisionFamily").value;
+  if (!symptom) {
+    $("decisionSearchStatus").className="status bad";
+    $("decisionSearchStatus").textContent="Choose a symptom.";
+    $("decisionSearchResult").innerHTML="";
+    return;
+  }
+  const matches=summaryDataset.filter(row=>
+    matchesSearchFamily(row,family) &&
+    symptomTokensForRow(row).some(value=>value.toLowerCase()===symptom.toLowerCase())
+  );
+  $("decisionSearchStatus").className=matches.length?"status good":"status bad";
+  $("decisionSearchStatus").textContent=matches.length
+    ?`Found ${matches.length} similar complaint case${matches.length===1?"":"s"}${family?` for ${family}`:""}.`
+    :`No complaint cases match ${symptom}${family?` for ${family}`:""}.`;
+  $("decisionSearchResult").innerHTML=matches.length?renderDecisionSearch(matches):"";
+}
+
 $("searchBtn").onclick=runQuickSearch;
 $("searchType").addEventListener("change",refreshSearchChoices);
 $("searchFamily").addEventListener("change",refreshSearchChoices);
+$("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
+$("decisionSearchBtn").onclick=runDecisionSearch;
 
 renderSummaryFieldOptions();
 renderRecords();

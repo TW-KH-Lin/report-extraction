@@ -67,6 +67,15 @@ button {
 .summary-upload-row button, .search-controls button { margin-left:0; }
 .search-controls select { min-width:190px; }
 .search-controls input { min-width:300px; flex:1; max-width:620px; }
+.search-section { margin-top:24px; padding-top:22px; border-top:1px solid #dfe5ec; }
+.search-section.first { margin-top:0; padding-top:0; border-top:0; }
+.search-section h3 { margin:0 0 6px; color:#17365d; }
+.decision-reference {
+  margin:14px 0 8px; padding:12px 14px; border-left:4px solid #2f5597;
+  border-radius:7px; background:#eef6ff; color:#17365d;
+}
+.decision-reference strong { display:block; margin-bottom:4px; }
+.decision-reference small { display:block; margin-top:6px; color:#526579; }
 .summary-field-options {
   display:grid; grid-template-columns:repeat(4,minmax(190px,1fr)); gap:9px 18px;
   padding:14px; border:1px solid #dfe5ec; border-radius:10px; background:#f8fafc;
