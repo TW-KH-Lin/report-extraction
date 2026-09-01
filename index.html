@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=5" />
+  <link rel="stylesheet" href="./styles.css?v=7" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -138,6 +138,8 @@
     <div id="searchView" class="app-view" hidden>
       <section class="panel">
         <h2>Quick Search</h2>
+        <div class="search-section first">
+        <h3>Find a lot or complaint</h3>
         <p class="hint">Choose whether to search by lot or complaint, narrow the list by product family, then select an available number. Choices are built locally from the selected workbooks and current extracted reports.</p>
         <div class="search-controls">
           <select id="searchType" aria-label="Search field">
@@ -159,6 +161,28 @@
         </div>
         <div id="searchStatus" class="status"></div>
         <div id="searchResult" class="table-scroll"></div>
+        </div>
+
+        <div class="search-section">
+          <h3>Find similar symptoms and historical tests</h3>
+          <p class="hint">Choose a membrane family and a reported symptom to find related complaint cases, lots, tests performed and final results.</p>
+          <div class="search-controls">
+            <select id="decisionFamily" aria-label="Membrane family for symptom search">
+              <option value="">All product families</option>
+              <option value="CN95">CN95</option>
+              <option value="CN110">CN110</option>
+              <option value="CN140">CN140</option>
+              <option value="CN140ub">CN140ub</option>
+              <option value="CN180">CN180</option>
+            </select>
+            <select id="decisionSymptom" aria-label="Complaint symptom" disabled>
+              <option value="">Choose a symptom</option>
+            </select>
+            <button id="decisionSearchBtn" type="button" class="primary">Show similar cases</button>
+          </div>
+          <div id="decisionSearchStatus" class="status"></div>
+          <div id="decisionSearchResult" class="table-scroll"></div>
+        </div>
       </section>
     </div>
   </main>
@@ -172,6 +196,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=21"></script>
+  <script type="module" src="./app.js?v=23"></script>
 </body>
 </html>

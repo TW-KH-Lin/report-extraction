@@ -7,6 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const CATEGORY_SHEETS = ["Final Reports", "Ongoing - Email", "Not in Detail Excel"];
 const FAMILY_SHEETS = ["CN95", "CN140ub", "CN140", "CN110", "CN180"];
+const LOT_FAMILY_ORDER = ["CN95", "CN110", "CN140", "CN140ub", "CN180"];
 const CATEGORY_HEADERS = [
   "Lot","Product Family","Membrane Type","Customer Company","Rolls Implicated","Samples Received",
   "Zone(s)","Final Roll(s)","Master Roll(s)","MR-FR Area(s)","MR-FR (s)",
@@ -59,6 +60,7 @@ let records = [];
 let lastBuiltSheetNames = [];
 let summaryDataset = [];
 let summarySources = [];
+let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
 const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -74,6 +76,14 @@ function productFamily(material="") {
   if (code.startsWith("1UN11")) return "CN110";
   if (code.startsWith("1UN18")) return "CN180";
   return "";
+}
+
+function normalizedProductFamily(material="", statedFamily="") {
+  const materialCodes=String(material||"").toUpperCase().match(/1UN(?:14AR|14ER|95|11|18)[A-Z0-9-]*/g)||[];
+  const derived=[...new Set(materialCodes.map(code=>productFamily(code)).filter(Boolean))];
+  if (derived.length) return derived.join("; ");
+  const stated=String(statedFamily||"").match(/CN140ub|CN140|CN180|CN110|CN95/gi)||[];
+  return [...new Set(stated.map(value=>value.toLowerCase()==="cn140ub"?"CN140ub":value.toUpperCase()))].join("; ");
 }
 
 function membraneType(material="", description="") {
@@ -1023,9 +1033,7 @@ function valueByAliases(row, aliases) {
 function summaryRowFromObject(row, sourceSheet) {
   const result={sourceSheets:sourceSheet};
   for (const [key,aliases] of Object.entries(SUMMARY_ALIASES)) result[key]=valueByAliases(row,aliases);
-  const familyFromMaterial=productFamily(result.materialNo);
-  const familyFromText=String(result.productFamily||"").match(/CN140ub|CN140|CN180|CN110|CN95/i)?.[0]||"";
-  result.productFamily=familyFromMaterial||familyFromText.replace(/^cn/i,"CN").replace(/ub$/i,"ub");
+  result.productFamily=normalizedProductFamily(result.materialNo,result.productFamily);
   for (const key of ["registeredDate","reportDate"]) {
     if (/^\d{5}(?:\.\d+)?$/.test(result[key])) {
       const date=new Date(Date.UTC(1899,11,30)+Number(result[key])*86400000);
@@ -1157,6 +1165,9 @@ async function collectComplaintDataset() {
     else mergeSummaryRows(merged.get(key),row);
   });
   const dataset=[...merged.values()];
+  dataset.forEach(row=>{
+    row.productFamily=normalizedProductFamily(row.materialNo,row.productFamily);
+  });
   const lotCounts=new Map();
   dataset.forEach((row,index)=>{
     const uniqueComplaint=normalizeId(row.complaintNo);
@@ -1179,19 +1190,29 @@ function selectedSummaryFields() {
 }
 
 function renderLotOnlyTable(rows) {
+  const filterControls=`<div class="lot-family-filter" role="group" aria-label="CN types to display">
+    <strong>Show CN types:</strong>
+    ${LOT_FAMILY_ORDER.map(family=>`<label><input type="checkbox" data-lot-family-filter value="${family}" ${selectedLotFamilies.has(family)?"checked":""} /> ${family}</label>`).join("")}
+  </div>`;
+  const filteredRows=rows.filter(row=>{
+    if (selectedLotFamilies.size===LOT_FAMILY_ORDER.length) return true;
+    const families=splitUniqueValues(row.productFamily);
+    return families.some(family=>selectedLotFamilies.has(family));
+  });
   const lots=new Map();
-  for (const row of rows) {
+  for (const row of filteredRows) {
     for (const lot of new Set(lotTokens(row.lot))) {
       if (!lots.has(lot)) lots.set(lot,[]);
       lots.get(lot).push(row);
     }
   }
-  if (!lots.size) return `<p class="status good">No complaint lots found.</p>`;
+  if (!lots.size) return `${filterControls}<p class="status good">No complaint lots match the selected CN types.</p>`;
   const groups=[...lots.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),undefined,{numeric:true}));
-  return `<table class="summary-table lot-detail-table"><thead><tr>
-    <th>Lot (complaint count)</th><th>Complaint Number</th><th>End Customer</th><th>Reason / Problem</th><th>Final Result / Status</th>
-  </tr></thead><tbody>${groups.map(([lot,complaints])=>complaints.map((row,index)=>`<tr>
+  return `${filterControls}<table class="summary-table lot-detail-table"><thead><tr>
+    <th>Lot (complaint count)</th><th>Product Family</th><th>Complaint Number</th><th>End Customer</th><th>Reason / Problem</th><th>Final Result / Status</th>
+  </tr></thead><tbody>${groups.map(([lot,complaints],groupIndex)=>complaints.map((row,index)=>`<tr class="lot-tone-${groupIndex%4}">
     ${index===0?`<td class="lot-group-cell" rowspan="${complaints.length}"><strong>Lot (${complaints.length})</strong><span>${esc(lot)}</span></td>`:""}
+    <td class="lot-family-cell">${esc(row.productFamily||"Not specified")}</td>
     <td>${esc(row.complaintNo||"Complaint number unavailable")}</td>
     <td>${esc(row.customer||"")}</td>
     <td>${esc(row.problem||"")}</td>
@@ -1300,7 +1321,7 @@ function removeSheetIfPresent(wb,name) {
 }
 
 function recordToCategoryRow(r) {
-  const fam = productFamily(r.materialNo) || r.productFamily || "";
+  const fam = normalizedProductFamily(r.materialNo,r.productFamily);
   const classification=complaintClassification(r.problem,r.customerReportedFailure);
   const registeredDate=parseFlexibleDate(r.complaintRegisteredDate)||r.complaintRegisteredDate||"";
   const reportDate=parseFlexibleDate(r.reportDate)||r.reportDate||"";
@@ -1335,7 +1356,7 @@ function recordToCategoryRow(r) {
 }
 
 function recordToEvidenceRows(r) {
-  const fam=productFamily(r.materialNo)||r.productFamily||"";
+  const fam=normalizedProductFamily(r.materialNo,r.productFamily);
   return (r.testEvidence||[]).map(t=>({
     "Complaint / Notification":r.complaintNo||"", "Lot":r.lot||"", "Material No.":r.materialNo||"",
     "Product Family":fam, "Units Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
@@ -1772,7 +1793,9 @@ function showAppView(viewId) {
 document.querySelectorAll("[data-app-tab]").forEach(button=>{
   button.addEventListener("click",()=>{
     showAppView(button.dataset.appTab);
-    if (button.dataset.appTab==="searchView") refreshSearchChoices();
+    if (button.dataset.appTab==="searchView") {
+      refreshSearchChoices().then(()=>refreshDecisionSymptomChoices());
+    }
   });
 });
 
@@ -1793,12 +1816,21 @@ $("summaryBasicBtn").onclick=()=>{
 };
 
 $("summaryLotBtn").onclick=()=>{
+  selectedLotFamilies=new Set(LOT_FAMILY_ORDER);
   document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=input.value==="lot";});
   if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
   else {
     $("summaryResult").innerHTML=`<p class="status">Choose source files and click Create summary, then Show lot details.</p>`;
   }
 };
+
+$("summaryResult").addEventListener("change",event=>{
+  const input=event.target.closest("[data-lot-family-filter]");
+  if (!input) return;
+  if (input.checked) selectedLotFamilies.add(input.value);
+  else selectedLotFamilies.delete(input.value);
+  $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+});
 
 $("summaryAllBtn").onclick=()=>{
   document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=true;});
@@ -1825,6 +1857,64 @@ const SEARCH_RESULT_FIELDS = SUMMARY_FIELDS.filter(field=>[
 function matchesSearchFamily(row,family) {
   if (!family) return true;
   return splitUniqueValues(row.productFamily).some(value=>value.toLowerCase()===family.toLowerCase());
+}
+
+function symptomTokensForRow(row) {
+  const listed=splitUniqueValues(row.standardizedSymptoms).filter(value=>value.toLowerCase()!=="review required");
+  if (listed.length) return listed;
+  const inferred=splitUniqueValues(complaintClassification(row.problem||"","").standardizedSymptoms)
+    .filter(value=>value.toLowerCase()!=="review required");
+  return inferred;
+}
+
+function refreshDecisionSymptomChoices() {
+  const symptomSelect=$("decisionSymptom");
+  const previous=symptomSelect.value;
+  const family=$("decisionFamily").value;
+  const symptoms=new Map();
+  for (const row of summaryDataset.filter(row=>matchesSearchFamily(row,family))) {
+    symptomTokensForRow(row).forEach(symptom=>{
+      const key=symptom.toLowerCase();
+      if (!symptoms.has(key)) symptoms.set(key,symptom);
+    });
+  }
+  const sorted=[...symptoms.values()].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  symptomSelect.innerHTML=`<option value="">Choose a symptom</option>${sorted.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+  if (sorted.includes(previous)) symptomSelect.value=previous;
+  symptomSelect.disabled=!sorted.length;
+  $("decisionSearchStatus").className=sorted.length?"status good":"status bad";
+  $("decisionSearchStatus").textContent=sorted.length
+    ?`${sorted.length} symptom${sorted.length===1?"":"s"} available${family?` for ${family}`:""}.`
+    :`No symptoms are available${family?` for ${family}`:""}. Load source files in Workbook Summary first.`;
+  $("decisionSearchResult").innerHTML="";
+}
+
+function renderDecisionSearch(rows) {
+  const testCounts=new Map();
+  for (const row of rows) {
+    for (const test of new Set(splitUniqueValues(row.tests))) {
+      testCounts.set(test,(testCounts.get(test)||0)+1);
+    }
+  }
+  const commonTests=[...testCounts.entries()]
+    .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))
+    .slice(0,6);
+  const reference=commonTests.length
+    ?commonTests.map(([test,count])=>`${esc(test)} (${count} case${count===1?"":"s"})`).join(" · ")
+    :"No tests were recorded for these matching complaints.";
+  return `<div class="decision-reference"><strong>Historical test reference</strong>${reference}
+    <small>Use this as a history lookup; the appropriate test plan still depends on the current sample and investigation.</small></div>
+    <table class="summary-table"><thead><tr>
+      <th>Complaint Number</th><th>Lot(s)</th><th>Product Family</th><th>Symptom(s)</th><th>Reason / Problem</th><th>Tests Performed</th><th>Final Result / Status</th>
+    </tr></thead><tbody>${rows.map(row=>`<tr>
+      <td>${esc(row.complaintNo||"Complaint number unavailable")}</td>
+      <td>${esc(row.lot||"")}</td>
+      <td>${esc(row.productFamily||"")}</td>
+      <td>${esc(symptomTokensForRow(row).join("; "))}</td>
+      <td>${esc(row.problem||"")}</td>
+      <td>${esc(row.tests||"Not recorded in workbook")}</td>
+      <td>${esc(row.result||"Not recorded in workbook")}</td>
+    </tr>`).join("")}</tbody></table>`;
 }
 
 async function refreshSearchChoices() {
@@ -1889,9 +1979,31 @@ async function runQuickSearch() {
   }
 }
 
+function runDecisionSearch() {
+  const symptom=$("decisionSymptom").value.trim();
+  const family=$("decisionFamily").value;
+  if (!symptom) {
+    $("decisionSearchStatus").className="status bad";
+    $("decisionSearchStatus").textContent="Choose a symptom.";
+    $("decisionSearchResult").innerHTML="";
+    return;
+  }
+  const matches=summaryDataset.filter(row=>
+    matchesSearchFamily(row,family) &&
+    symptomTokensForRow(row).some(value=>value.toLowerCase()===symptom.toLowerCase())
+  );
+  $("decisionSearchStatus").className=matches.length?"status good":"status bad";
+  $("decisionSearchStatus").textContent=matches.length
+    ?`Found ${matches.length} similar complaint case${matches.length===1?"":"s"}${family?` for ${family}`:""}.`
+    :`No complaint cases match ${symptom}${family?` for ${family}`:""}.`;
+  $("decisionSearchResult").innerHTML=matches.length?renderDecisionSearch(matches):"";
+}
+
 $("searchBtn").onclick=runQuickSearch;
 $("searchType").addEventListener("change",refreshSearchChoices);
 $("searchFamily").addEventListener("change",refreshSearchChoices);
+$("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
+$("decisionSearchBtn").onclick=runDecisionSearch;
 
 renderSummaryFieldOptions();
 renderRecords();

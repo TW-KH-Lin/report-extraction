@@ -63,8 +63,10 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Summary and Quick Search can also read PDF, MSG and ZIP report files without adding those files to the repository
 - Selectable summary columns, including complaint, lot, related-lot count, customer, reason, final result, tests and dates
 - **Show lot details** automatically opens a grouped view showing each lot's complaint count and the related complaint numbers, customers, reasons and results
+- Lot-detail groups use alternating background colors, show product family after the lot, and can be filtered instantly by CN type
 - One-row-per-complaint consolidation when the same complaint appears on several product or category sheets
 - Separate Quick Search tab with linked dropdowns for search type, product family and available complaint or lot numbers
+- Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
 - Workbook summary and search also include reports currently extracted in the browser
 - Complaint number
 - Complaint registered date, report date and elapsed days
