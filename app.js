@@ -1792,6 +1792,14 @@ $("summaryBasicBtn").onclick=()=>{
   if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
 };
 
+$("summaryLotBtn").onclick=()=>{
+  document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=input.value==="lot";});
+  if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
+  else {
+    $("summaryResult").innerHTML=`<p class="status">Choose source files and click Create summary, then Show lot details.</p>`;
+  }
+};
+
 $("summaryAllBtn").onclick=()=>{
   document.querySelectorAll("[data-summary-field]").forEach(input=>{input.checked=true;});
   if (summaryDataset.length) $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
