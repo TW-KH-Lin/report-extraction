@@ -75,6 +75,10 @@ button {
 .summary-field-options input[type="checkbox"] { width:auto; min-width:0; padding:0; accent-color:#2f5597; }
 .summary-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:18px 0; }
 .summary-table { min-width:1050px; }
+.lot-detail-table { min-width:900px; }
+.lot-group-cell { min-width:150px; background:#eef4fa; color:#17365d; vertical-align:top; }
+.lot-group-cell strong, .lot-group-cell span { display:block; }
+.lot-group-cell span { margin-top:5px; font-size:14px; color:#334155; }
 .grid {
   display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px;
 }

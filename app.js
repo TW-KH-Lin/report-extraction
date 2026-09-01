@@ -1178,9 +1178,31 @@ function selectedSummaryFields() {
   return SUMMARY_FIELDS.filter(field=>selected.has(field.key));
 }
 
+function renderLotOnlyTable(rows) {
+  const lots=new Map();
+  for (const row of rows) {
+    for (const lot of new Set(lotTokens(row.lot))) {
+      if (!lots.has(lot)) lots.set(lot,[]);
+      lots.get(lot).push(row);
+    }
+  }
+  if (!lots.size) return `<p class="status good">No complaint lots found.</p>`;
+  const groups=[...lots.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),undefined,{numeric:true}));
+  return `<table class="summary-table lot-detail-table"><thead><tr>
+    <th>Lot (complaint count)</th><th>Complaint Number</th><th>End Customer</th><th>Reason / Problem</th><th>Final Result / Status</th>
+  </tr></thead><tbody>${groups.map(([lot,complaints])=>complaints.map((row,index)=>`<tr>
+    ${index===0?`<td class="lot-group-cell" rowspan="${complaints.length}"><strong>Lot (${complaints.length})</strong><span>${esc(lot)}</span></td>`:""}
+    <td>${esc(row.complaintNo||"Complaint number unavailable")}</td>
+    <td>${esc(row.customer||"")}</td>
+    <td>${esc(row.problem||"")}</td>
+    <td>${esc(row.result||"")}</td>
+  </tr>`).join("")).join("")}</tbody></table>`;
+}
+
 function renderDatasetTable(rows,fields) {
   if (!rows.length) return `<p class="status good">No matching complaint information found.</p>`;
   if (!fields.length) return `<p class="status bad">Tick at least one information field to display.</p>`;
+  if (fields.length===1 && fields[0].key==="lot") return renderLotOnlyTable(rows);
   return `<table class="summary-table"><thead><tr>${fields.map(field=>`<th>${esc(field.label)}</th>`).join("")}</tr></thead><tbody>${rows.map(row=>`<tr>${fields.map(field=>`<td>${esc(row[field.key]||"")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
