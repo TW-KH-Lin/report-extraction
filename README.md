@@ -20,7 +20,7 @@ All required browser libraries are pinned and stored in the repository under `ve
 
 ## How to deploy with GitHub Pages
 
-1. Create a new GitHub repository, for example `membrane-complaint-web`.
+1. Create a new GitHub repository, for example `report-extraction`.
 2. Upload these files and folders to the repository root:
    - `index.html`
    - `app.js`
@@ -30,7 +30,7 @@ All required browser libraries are pinned and stored in the repository under `ve
 4. Choose deployment from the repository branch (normally `main`) and root folder.
 5. Save.
 6. GitHub will provide a web address such as:
-   `https://<your-account>.github.io/membrane-complaint-web/`
+   `https://<your-account>.github.io/report-extraction/`
 
 No Python is required to use the deployed page.
 
@@ -54,6 +54,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
 - Add reports in later selections without replacing earlier extracted complaints
+- Upload an existing Excel workbook and several reports together, then download an updated workbook
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
 - Fold or show individual extracted complaint cards, with Fold all and Show all controls
 - Save reviewed results temporarily in the same browser and restore them after refresh
@@ -93,6 +94,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Broad formal issue labels are enriched with the customer statement and root-cause terminology
 - Structured test evidence with result, outcome, specification status and source page
 - Dedicated `Extracted Test Evidence` sheet aligned to the detailed investigation columns
+- Dedicated `Complaint Summary` sheet with one reusable row per complaint for later overview and search
+- Legacy-format CN sheets are preserved unchanged so historical rows are not removed; new records remain available in the standardized summary and category sheets
 - Manual review/edit before export
 - Lot-history lookup in the uploaded Excel and current extraction
 - Unique complaint count for the same lot

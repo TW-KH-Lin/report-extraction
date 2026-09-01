@@ -21,6 +21,7 @@ const CATEGORY_HEADERS = [
 ];
 const FAMILY_HEADERS = ["Source Group", ...CATEGORY_HEADERS];
 const EVIDENCE_SHEET = "Extracted Test Evidence";
+const COMPLAINT_SUMMARY_SHEET = "Complaint Summary";
 const SUMMARY_SHEET = "Lot & Symptom Summary";
 const EVIDENCE_HEADERS = [
   "Complaint / Notification","Lot","Material No.","Product Family","Units Implicated","Samples Received",
@@ -29,7 +30,13 @@ const EVIDENCE_HEADERS = [
   "Source Page","Case-specific Conditions / Source Detail","Source File"
 ];
 const SUMMARY_HEADERS = ["Lot","Complaint Count","Symptom","Symptom Count","Complaint Numbers"];
-const MANAGED_SHEETS = [...CATEGORY_SHEETS,EVIDENCE_SHEET,SUMMARY_SHEET,...FAMILY_SHEETS];
+const COMPLAINT_SUMMARY_HEADERS = [
+  "Complaint Number","Lot","Product Family","Material No.","Membrane Type","End Customer",
+  "Problem","Customer Reported Failure","Standardized Symptom(s)","Problem Type","Tests Performed",
+  "Final Result / Status","Rolls Implicated","Samples Received","MR-FR(s)",
+  "Registered Date","Report Date","Days","Data Quality / Notes","Source Group"
+];
+const MANAGED_SHEETS = [...CATEGORY_SHEETS,EVIDENCE_SHEET,COMPLAINT_SUMMARY_SHEET,SUMMARY_SHEET,...FAMILY_SHEETS];
 const DRAFT_DB_NAME = "report-extraction-private-drafts";
 const DRAFT_STORE = "drafts";
 const DRAFT_KEY = "current-results";
@@ -53,11 +60,23 @@ const SUMMARY_FIELDS = [
   {key:"sourceSheets",label:"Source Worksheet(s)"}
 ];
 
+const GENERIC_TEST_RULES = [
+  {name:"Visual inspection",re:/\bvisual\s+inspection\b/i,purpose:"Appearance / physical defect review",method:"Inspect customer, retain or reference material and available photographs."},
+  {name:"Batch record review",re:/\b(?:batch|manufacturing|production)\s+(?:record|documentation)\s+review\b|\breview\s+of\s+(?:the\s+)?(?:batch|manufacturing|production)\s+(?:record|documentation)/i,purpose:"Manufacturing history review",method:"Review production, release and in-process records for deviations or relevant trends."},
+  {name:"Peel strength test",re:/\b(?:peel[- ]test|peel\s+strength\s+(?:test|measurement))\b/i,purpose:"Backing adhesion / peel strength",method:"Measure peel or adhesive strength under the report-defined conditions."},
+  {name:"Adhesive strength test",re:/\badhesive\s+strength\s+(?:test|measurement)s?\b/i,purpose:"Backing adhesion",method:"Measure adhesive strength and compare with the applicable internal reference."},
+  {name:"Illuminated inspection table",re:/\billuminated\s+inspection\s+table\b/i,purpose:"Surface and structure inspection",method:"Inspect membrane on an illuminated inspection table."},
+  {name:"Cold light inspection",re:/\bcold\s+light\s+inspection\b/i,purpose:"Surface damage inspection",method:"Inspect membrane using cold-light illumination."},
+  {name:"Phenol red drop test",re:/\bphenol\s+red\s+drop\s+test\b/i,purpose:"Surface wetting / flow behavior",method:"Apply phenol-red solution and assess wetting or spreading behavior."},
+  {name:"Functional hCG assay",re:/\b(?:functional\s+)?hcg\s+(?:test|assay)\b/i,purpose:"Functional lateral-flow performance",method:"Run the report-defined hCG lateral-flow assay and compare signal behavior with reference."}
+];
+
 let workbookBuffer = null;
 let workbookMode = "standard";
 let workbookFileName = "";
 let records = [];
 let lastBuiltSheetNames = [];
+let lastPreservedSheetNames = [];
 let summaryDataset = [];
 let summarySources = [];
 let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
@@ -169,6 +188,15 @@ function daysBetweenDates(start,end) {
   return a&&b?Math.round((b-a)/86400000):"";
 }
 
+function normalizeExtractedDate(value="") {
+  const text=String(value).trim();
+  let m=text.match(/^(\d(?:\s*\d)?)\s+([A-Za-z]{3,9})\s+(\d(?:\s*\d){1,3})$/);
+  if (m) return `${m[1].replace(/\s/g,"")} ${m[2]} ${m[3].replace(/\s/g,"")}`;
+  m=text.match(/^(\d(?:\s*\d)?)\s*([.\/-])\s*([A-Za-z0-9](?:\s*[A-Za-z0-9]){1,8})\s*([.\/-])\s*(\d(?:\s*\d){1,3})$/);
+  if (m) return `${m[1].replace(/\s/g,"")}${m[2]}${m[3].replace(/\s/g,"")}${m[4]}${m[5].replace(/\s/g,"")}`;
+  return text.replace(/\s*([.\/-])\s*/g,"$1");
+}
+
 function firstMatch(text, regexes) {
   for (const re of regexes) {
     const m = text.match(re);
@@ -185,6 +213,69 @@ function cleanBlock(value="") {
     .trim();
 }
 
+function repairCommonPdfSpacing(value="") {
+  return String(value)
+    .replace(/\bL\s+ength\b/gi,"Length")
+    .replace(/\bC\s+racks?\b/gi,match=>match.toLowerCase().includes("s")?"Cracks":"Crack")
+    .replace(/\bDu\s+ring\b/gi,"During")
+    .replace(/\bo\s+bserved\b/gi,"observed")
+    .replace(/\bH\s+angzhou\b/gi,"Hangzhou")
+    .replace(/\bHa\s+ngzhou\b/gi,"Hangzhou")
+    .replace(/\bC\s+ustomer\b/gi,"Customer")
+    .replace(/\bR\s+eport\b/gi,"Report");
+}
+
+function normalizeProblemText(value="") {
+  let text=repairCommonPdfSpacing(cleanBlock(value))
+    .replace(/^Customer\s+statement\s*:\s*/i,"")
+    .replace(/[“”"]/g,"")
+    .trim();
+  text=text.split(/\s+The\s+customer\s+claimed\b/i)[0].trim()||text;
+  text=text.split(/\s+(?:Customer\s+CRN|Product\s+Code|SSB\s+batch|Please\s+use\s+the\s+reference|A\s+report\s+will\s+be\s+available|Due\s+date\s+complaint\s+report)\s*:?/i)[0].trim()||text;
+  return text.replace(/^[„“”"']+|[„“”"']+$/g,"").replace(/\s+([,.;:])/g,"$1").replace(/\s{2,}/g," ");
+}
+
+function problemFromChineseText(value="") {
+  const matches=[];
+  const rules=[["Imprints",/压痕/],["Scratches",/划痕/],["Cracks",/裂痕|裂纹/],["Bag unsealed",/未封口/],["Width out of specification",/宽度变窄/],["Thickness issue",/厚度/]];
+  for (const [label,re] of rules) if (re.test(value)) matches.push(label);
+  return [...new Set(matches)].join(" / ");
+}
+
+function productFamilyFromText(value="") {
+  const text=String(value);
+  if (/CN\s*140\s*(?:ub|unbacked)/i.test(text)) return "CN140ub";
+  if (/CN\s*140/i.test(text)) return "CN140";
+  if (/CN\s*180/i.test(text)) return "CN180";
+  if (/CN\s*110/i.test(text)) return "CN110";
+  if (/CN\s*95/i.test(text)) return "CN95";
+  return "";
+}
+
+function customerFromFilename(filename="") {
+  const tag=String(filename).match(/\(([^()]+)\)(?=\.[^.]+$)/)?.[1]||"";
+  if (!tag) return "";
+  const label=(tag.split("_").pop()||tag).replace(/[-_]+/g," ").trim();
+  return /^[A-Z0-9]{2,}$/.test(label)?label:label.replace(/\b\w/g,char=>char.toUpperCase());
+}
+
+function canonicalCustomerName(value="") {
+  return repairCommonPdfSpacing(cleanBlock(value))
+    .replace(/^the\s+customer\s+/i,"")
+    .replace(/^(?:customer|company|organization|account)\s*(?:company|name)?\s*[:#-]?\s*/i,"")
+    .replace(/\s*\(\s*/g," (").replace(/\s*\)\s*/g,") ")
+    .replace(/\bCo\.?\s*,?\s*Ltd\.?\b/gi,"Co., Ltd.")
+    .replace(/\s+([,.;])/g,"$1")
+    .replace(/\.{2,}$/,".")
+    .replace(/\s{2,}/g," ")
+    .trim();
+}
+
+function plausibleCustomerName(value="") {
+  const text=canonicalCustomerName(value);
+  return Boolean(text && text.length>=2 && text.length<=140 && !/@|Biotech\s+GmbH|Complaint\s+Report|QN\s+no|thank\s+you/i.test(text));
+}
+
 function sectionMatch(text, headingPattern, nextHeadingPattern, maxLength=2400) {
   const re = new RegExp(
     `${headingPattern}\\s*([\\s\\S]{1,${maxLength}}?)(?=${nextHeadingPattern}|$)`,
@@ -193,11 +284,13 @@ function sectionMatch(text, headingPattern, nextHeadingPattern, maxLength=2400) 
   return cleanBlock(text.match(re)?.[1] || "");
 }
 
-function customerCompanyFromHeader(text) {
+function customerCompanyFromHeader(text, filename="", sourceType="") {
   const explicit = firstMatch(text, [
-    /(?:Customer\s+(?:company|organization|account)|Company\s+name)\s*[:#]?\s*([^\n]{2,160})/i
+    /(?:Customer\s+(?:company|organization|account)|Company\s+name)\s*[:#]?\s*([^\n]{2,160})/i,
+    /(?:new\s+complaint\s+report\s+from|please\s+forward[^\n]{0,80}?\s+to)\s*[:#]?\s*([^\n.]{2,160})/i
   ]);
-  if (explicit) return explicit;
+  if (plausibleCustomerName(explicit)) return canonicalCustomerName(explicit);
+  if (sourceType==="msg") return customerFromFilename(filename);
   const lines = text.split(/\n/).map(x=>x.trim()).filter(Boolean);
   const emailIndex = lines.findIndex(line => /@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(line));
   if (emailIndex >= 0) {
@@ -205,12 +298,15 @@ function customerCompanyFromHeader(text) {
       const line=lines[i];
       if (/^(?:\d|Report\s+date|Complaint\s+information)/i.test(line)) continue;
       if (/@/.test(line)) continue;
-      return line.replace(/\b([A-Za-z]{5,})\s+([a-z])\b/g,"$1$2").replace(/\s{2,}.*$/, "").trim();
+      const candidate=line.replace(/\b([A-Za-z]{5,})\s+([a-z])\b/g,"$1$2").replace(/\s{2,}.*$/, "").trim();
+      if (!/^(?:From:|Address:|Subject:|Dear\b|We\s+acknowledge)/i.test(candidate) && plausibleCustomerName(candidate)) return canonicalCustomerName(candidate);
     }
   }
-  return firstMatch(text, [
+  const fallback=firstMatch(text, [
     /\n([^\n]*(?:Co\.?|Ltd\.?|Inc\.?|LLC|GmbH|Corporation|Company|Biopharm|Biotechnology)[^\n]*)/i
   ]);
+  if (sourceType!=="msg" && !/Biotech\s+GmbH/i.test(fallback)) return canonicalCustomerName(fallback);
+  return customerFromFilename(filename);
 }
 
 function coordinatorFromText(text) {
@@ -308,13 +404,12 @@ function extractAssays(text) {
   const hasInProcessReview = /Review\s+in[- ]process\s+data\s+of\s+capillary\s+flow\s+time/i.test(text);
   if (hasFlowMeasurement) assays.push("Capillary flow time");
   else if (hasInProcessReview) assays.push("In-process data review");
-  if (/Phenol\s+red\s+buffer\s+line\s+test/i.test(text)) {
-    assays.push("Phenol red buffer line test");
-  }
+  if (/Phenol\s+red\s+(?:buffer\s+)?line\s+test/i.test(text)) assays.push("Phenol red line test");
   if (/Protein\s+(?:binding\s+(?:assay|capacity)|lines?)/i.test(text)) {
     assays.push("Protein binding assay");
   }
-  return assays.join("; ");
+  for (const rule of GENERIC_TEST_RULES) if (rule.re.test(text)) assays.push(rule.name);
+  return [...new Set(assays)].join("; ");
 }
 
 function sourcePageFor(text, phrase) {
@@ -330,6 +425,24 @@ function sourcePageRange(text, phrases) {
   if (!pages.length) return "";
   const first=Math.min(...pages), last=Math.max(...pages);
   return first===last?`p.${first}`:`p.${first}-${last}`;
+}
+
+function sourceContextForRegex(text,re,maxLength=360) {
+  const flags=re.flags.includes("g")?re.flags:re.flags+"g";
+  const match=new RegExp(re.source,flags).exec(text);
+  if (!match || match.index===undefined) return "";
+  const pageEnd=text.indexOf("--- Page ",match.index+1);
+  const end=Math.min(match.index+maxLength,pageEnd>match.index?pageEnd:text.length);
+  return cleanBlock(text.slice(match.index,end));
+}
+
+function genericEvidenceOutcome(result="") {
+  const text=String(result).toLowerCase();
+  const negatedIssue=/\b(?:no|not|without)\b[^.]{0,45}\b(?:defect|damage|issue|deviation|discrepanc|irregularit|scratch|crack|imprint)/i.test(result);
+  if (/within\s+(?:the\s+)?(?:internal\s+)?specification|no\s+(?:visible\s+)?(?:defect|issue|deviation|discrepanc|irregularit)/i.test(result)) return {outcome:"Pass",withinSpec:"Yes",issueObserved:"No"};
+  if (!negatedIssue && /below\s+(?:the\s+)?(?:internal\s+)?(?:threshold|specification)|out\s+of\s+specification|reveals?\s+(?:low|a\s+defect)|(?:defect|damage|scratch|crack|imprint)\s+(?:was|were)\s+(?:observed|identified)/i.test(result)) return {outcome:"Issue observed",withinSpec:"No",issueObserved:"Yes"};
+  if (text) return {outcome:"Review required",withinSpec:"",issueObserved:""};
+  return {outcome:"Recorded",withinSpec:"",issueObserved:""};
 }
 
 function extractTestEvidence(text) {
@@ -395,10 +508,28 @@ function extractTestEvidence(text) {
       conditions:/0\.5\s+to\s+4\s+mg\s*\/\s*ml/i.test(text)?"Protein 0.5-4 mg/ml; 1 µl/cm; SyproRuby staining and image analysis":""
     });
   }
+  const existing=new Set(tests.map(test=>test.name));
+  for (const rule of GENERIC_TEST_RULES) {
+    if (existing.has(rule.name) || !rule.re.test(text)) continue;
+    const result=sourceContextForRegex(text,rule.re);
+    const assessment=genericEvidenceOutcome(result);
+    const phrase=text.match(rule.re)?.[0]||rule.name;
+    tests.push({
+      name:rule.name,purpose:rule.purpose,sampleSource:"See report",sampleId:retainIds,
+      method:rule.method,result,...assessment,sourcePage:sourcePageFor(text,phrase),conditions:""
+    });
+  }
   return tests;
 }
 
+function complaintIdsFromFilename(filename="") {
+  return [...String(filename).matchAll(/Comp\s*-\s*(\d{4,10})/gi)]
+    .map(match=>`Comp-${String(Number(match[1])).padStart(7,"0")}`);
+}
+
 function parseRecord(text, filename, sourceType) {
+  const rawSourceText=text;
+  text=repairCommonPdfSpacing(text);
   const searchableText = `${text}\nFile name: ${filename}`;
   let complaintNo = firstMatch(searchableText, [
     /\b(Comp\s*-\s*\d{6,10})\b/i,
@@ -407,7 +538,7 @@ function parseRecord(text, filename, sourceType) {
   ]);
   complaintNo = complaintNo.replace(/\s+/g, "").replace(/^comp/i, "Comp");
   let material = firstMatch(text, [
-    /Product\s+code\s*[:#]?\s*([A-Z0-9]+(?:\s+[A-Z])?)(?=\s+Lot\s+number)/i,
+    /Product\s+code\s*[:#]?\s*((?:1UN)[A-Z0-9\s]{7,35}?)(?=\s+Lot\s+number|\s+SSB\s+batch|\n)/i,
     /Product\s+code\s*[:#]?\s*([A-Z0-9]+)/i,
     /\b(1UN(?:95|14|11|18)[A-Z0-9]+)\b/i
   ]);
@@ -415,17 +546,24 @@ function parseRecord(text, filename, sourceType) {
   const productDescription = firstMatch(text, [
     /Product\s+description\s*[:#]?\s*([\s\S]{3,220}?)(?=\s+Total\s+units\s+implicated|\s+Number\s+of\s+samples|\n)/i
   ]);
-  const lot = firstMatch(text, [
+  const lot = firstMatch(text, sourceType==="msg" ? [
+    /Subject\s*:[^\n]*?(?:batch|lot|批次)\s*([0-9]{7,9})/i,
+    /Batch\s+number\s+([0-9]{7,9})\s+must\s+be\s+the\s+correct\s+one/i,
+    /SSB\s+(?:batch|lot)\s*(?:No\.?|number)?\s*[:#]?\s*([0-9]{7,9})/i,
+    /批次\s*([0-9]{7,9})/i,
+    /Lot\s+number\s*[:#]?\s*([0-9]{7,9})/i,
+    /\blot\s+(?:number\s*)?[:#]?\s*([0-9]{7,9})\b/i
+  ] : [
     /Lot\s+number\s*[:#]?\s*([0-9]{7,9})/i,
     /\blot\s+(?:number\s*)?[:#]?\s*([0-9]{7,9})\b/i
   ]);
   let reportDate = firstMatch(text, [
-    /(?:Report\s+date|Date\s+of\s+(?:the\s+)?report|Report\s+(?:issued|created)\s+(?:on)?)\s*[:#]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{2,4})/i,
+    /(?:Report\s+date|Date\s+of\s+(?:the\s+)?report|Report\s+(?:issued|created)\s+(?:on)?)\s*[:#]?\s*(\d(?:\s*\d)?\s+[A-Za-z]{3,9}\s+\d(?:\s*\d){1,3})/i,
     /(?:Report\s+date|Date\s+of\s+(?:the\s+)?report|Report\s+(?:issued|created)\s+(?:on)?)\s*[:#]?\s*([0-9]{1,2}\s*[-./]\s*[A-Za-z]{3,9}\s*[-./]\s*[0-9]{2,4})/i,
     /(?:Report\s+date|Date\s+of\s+(?:the\s+)?report|Report\s+(?:issued|created)\s+(?:on)?)\s*[:#]?\s*([0-9]{1,4}\s*[-./]\s*[0-9]{1,2}\s*[-./]\s*[0-9]{1,4})/i
   ]);
-  reportDate = reportDate.replace(/\s*([./-])\s*/g, "$1");
-  const customerCompany = customerCompanyFromHeader(text);
+  reportDate = normalizeExtractedDate(reportDate);
+  const customerCompany = canonicalCustomerName(customerCompanyFromHeader(text,filename,sourceType));
   const rollsImplicated = firstMatch(text, [
     /Total\s+units\s+implicated\s*[:#]?\s*(\d+)\s*rolls?/i,
     /(?:Number|Total)\s+of\s+rolls?\s+implicated\s*[:#]?\s*(\d+)/i
@@ -443,13 +581,16 @@ function parseRecord(text, filename, sourceType) {
   if (receivedIdentifiers && !sampleDetails.includes(receivedIdentifiers)) {
     sampleDetails=cleanBlock(`${sampleDetails} (${receivedIdentifiers})`);
   }
-  const formalProblem = firstMatch(text, [
+  let formalProblem = normalizeProblemText(firstMatch(text, [
     /(?:Issue|Problem|Complaint)\s+description\s*[:#]?\s*([\s\S]{5,600}?)(?=\s+(?:(?:[A-Za-z]+\s+)?Criticality|Complaint\s+status|Date\s+Complaint|Could\s+the\s+failure|Root\s+cause|Investigation|Final\s+assessment|Conclusion|Figure|Fig\.)\b|$)/i,
     /Customer\s+(?:statement|complaint)\s*[:#]?\s*[“"]?([\s\S]{5,600}?)(?=[”"]?\s*(?:Criticality|Complaint\s+status|Figure|Fig\.|Investigation|Conclusion|$))/i,
     /(?:Issue|Problem|Complaint)\s+description\s*[:#]?\s*(.{5,500})/i,
     /Customer\s+(?:statement|complaint)\s*[:#]?\s*[“"]?(.{5,500})/i,
-    /Subject\s*:\s*(.{1,180})/i
-  ]).replace(/^["“]|["”]$/g,"");
+    /Subject\s*:\s*(.{1,240})/i
+  ]).replace(/^["“]|["”]$/g,""));
+  if ((!formalProblem || /投诉批次|异常沟通|Final\s+Report/i.test(formalProblem)) && problemFromChineseText(text)) {
+    formalProblem=problemFromChineseText(text);
+  }
   const status = sourceType === "msg"
     ? "Ongoing – email only"
     : selectedCheckbox(text, "Complaint status", ["Confirmed","Not confirmed","Not conclusive"]);
@@ -468,9 +609,11 @@ function parseRecord(text, filename, sourceType) {
     ? mrfr.areas.join("; ")
     : mrfr.masters.map(x=>`MR${x}`).join("; ");
   const sourceGroup = sourceType === "msg" ? "Ongoing - Email" : "Final Reports";
-  const customerReportedFailure = cleanBlock(firstMatch(text, [
+  const customerReportedFailure = normalizeProblemText(firstMatch(text, [
     /received\s+a\s+complaint\s+with\s+the\s+following\s+statement\s*:\s*[“"]?([\s\S]{3,500}?)(?=\s*(?:Picture\s*s|Pictures|Figure|1\.2\.|Criticality|--- Page))/i,
-    /Customer\s+statement[\s\S]{0,420}?[“"]([^”"]{3,500})[”"]/i
+    /Customer\s+statement[\s\S]{0,420}?[“"]([^”"]{3,500})[”"]/i,
+    /Customer\s+statement\s*:\s*([\s\S]{3,700}?)(?=\s+(?:The\s+customer\s+claimed|Root\s+cause|(?:Company|Manufacturer)\s+Criticality|Complaint\s+status|1\.2\.|Criticality|--- Page))/i,
+    /Issue\s+description\s*:\s*[“"]?([\s\S]{3,700}?)[”"]?\s*(?=Customer\s+CRN|Product\s+Code|SSB\s+batch|Due\s+date|Please\s+use)/i
   ]).replace(/\s*-\s*/g,"-").replace(/[“”"]+/g,""));
   const rootCauseConclusion = sectionMatch(
     text,
@@ -497,10 +640,11 @@ function parseRecord(text, filename, sourceType) {
   const coordinator = coordinatorFromText(text);
   const reportVersion = firstMatch(text, [/Report\s+version\s*[:#]?\s*([A-Z0-9.-]+)/i]);
   let complaintRegisteredDate = firstMatch(text, [
+    /Date\s+complaint\s+registered\s*[:#]?\s*(\d(?:\s*\d)?\s*[-./]\s*[A-Za-z0-9](?:\s*[A-Za-z0-9]){1,8}\s*[-./]\s*\d(?:\s*\d){1,3})/i,
     /Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}\s*[-./]\s*[A-Za-z0-9]{2,9}\s*[-./]\s*[0-9]{2,4})/i,
     /Date\s+complaint\s+registered\s*[:#]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{2,4})/i
   ]);
-  complaintRegisteredDate=complaintRegisteredDate.replace(/\s*([./-])\s*/g,"$1");
+  complaintRegisteredDate=normalizeExtractedDate(complaintRegisteredDate);
   const samplesReceivedDate = firstMatch(text, [/Date\s+samples\s+received\s*[:#]?\s*([A-Z0-9][A-Z0-9 .\/-]{1,30})/i]);
   const classification = complaintClassification(problem,customerReportedFailure);
   const daysToReport = daysBetweenDates(complaintRegisteredDate,reportDate);
@@ -520,13 +664,17 @@ function parseRecord(text, filename, sourceType) {
     warnings.push("This PDF has little or no selectable text; OCR may be required");
   }
   if (sourceType === "pdf" && !status) warnings.push("Complaint status not confidently extracted");
+  const filenameComplaints=complaintIdsFromFilename(filename);
+  if (filenameComplaints.length===1 && complaintNo && normalizeComplaintId(filenameComplaints[0])!==normalizeComplaintId(complaintNo)) {
+    warnings.push(`Filename says ${filenameComplaints[0]}, but report content says ${complaintNo}`);
+  }
 
   return {
     sourceFile: filename, sourceType, sourceGroup,
     complaintNo, reportDate, customerCompany, rollsImplicated, samplesReceived,
     sampleDetails, materialNo: material, productDescription,
-    productFamily: productFamily(material), lot,
-    membraneType:membraneType(material,productDescription), zones, mrfrCombined,
+    productFamily: productFamily(material)||productFamilyFromText(`${productDescription} ${text.slice(0,1200)}`), lot,
+    membraneType:membraneType(material,productDescription)||productFamilyFromText(`${productDescription} ${text.slice(0,1200)}`), zones, mrfrCombined,
     standardizedSymptoms:classification.standardizedSymptoms,
     problemTypes:classification.problemTypes, lfaRelevance:classification.lfaRelevance,
     formalProblem, problem, assaysApplied, resultStatus:status, criticality,
@@ -540,7 +688,7 @@ function parseRecord(text, filename, sourceType) {
     similarEvents, containmentNecessary, correctiveActionNecessary,
     rootCauseConclusion, problemValidation, finalAssessment, finalScope, testEvidence,
     warnings: warnings.join("; "),
-    rawText:text.slice(0,30000)
+    rawText:rawSourceText.slice(0,30000)
   };
 }
 
@@ -585,11 +733,120 @@ async function msgText(arrayBuffer) {
   return candidates.join("\n").replace(/<[^>]+>/g," ");
 }
 
-async function extractOne(name, buffer) {
+function markerIndexes(marker="") {
+  const output=new Set();
+  for (const part of String(marker).split(/[+,;&]/).map(value=>value.trim()).filter(Boolean)) {
+    const range=part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const start=Number(range[1]), end=Number(range[2]);
+      for (let value=Math.min(start,end);value<=Math.max(start,end);value++) output.add(value);
+    } else if (/^\d+$/.test(part)) output.add(Number(part));
+  }
+  return [...output];
+}
+
+function assignMarkedValue(target,marker,value) {
+  for (const index of markerIndexes(marker)) if (value) target.set(index,cleanBlock(value));
+}
+
+function markedValuesFromArea(area,valuePattern) {
+  const values=new Map();
+  let match;
+  const re=new RegExp(`${valuePattern}\\s*\\(([0-9+,&;\\s-]+)\\)`,"gi");
+  while ((match=re.exec(area))) assignMarkedValue(values,match[2],match[1]);
+  return values;
+}
+
+function splitNumberedPdfCases(text,base) {
+  const early=repairCommonPdfSpacing(text.slice(0,12000));
+  const ids=new Map();
+  let match;
+  const idRe=/\b(13\d{8}|Comp\s*-\s*\d{6,10})\s*\((\d+)\)/gi;
+  while ((match=idRe.exec(early))) {
+    const id=match[1].replace(/\s+/g,"").replace(/^comp/i,"Comp");
+    if (!ids.has(Number(match[2]))) ids.set(Number(match[2]),id);
+  }
+  if (ids.size<2) return [base];
+
+  const materialByCase=new Map();
+  const materialRe=/\b(1UN(?:14AR|14ER|95|11|18)[A-Z0-9\s]{5,28}?)\s*\(([0-9+,&;\s-]+)\)/gi;
+  while ((match=materialRe.exec(early))) {
+    const code=match[1].replace(/\s+/g,"");
+    if (/^1UN(?:14AR|14ER|95|11|18)[A-Z0-9]{5,}$/i.test(code)) assignMarkedValue(materialByCase,match[2],code);
+  }
+  const lotByCase=new Map();
+  const lotRe=/\b(2[0-9]{6})\s*\(([0-9+,&;\s-]+)\)/g;
+  while ((match=lotRe.exec(early))) assignMarkedValue(lotByCase,match[2],match[1]);
+  const rollsByCase=new Map();
+  const rollsRe=/\b([0-9]+)\s*rolls?\s*\(([0-9+,&;\s-]+)\)/gi;
+  while ((match=rollsRe.exec(early))) assignMarkedValue(rollsByCase,match[2],match[1]);
+  const dateByCase=new Map();
+  const dateRe=/(\d{1,2}\s*[-./]\s*[A-Za-z]{3,9}\s*[-./]\s*\d{2,4})\s*\(([0-9+,&;\s-]+)\)/gi;
+  while ((match=dateRe.exec(early))) assignMarkedValue(dateByCase,match[2],normalizeExtractedDate(match[1]));
+
+  const problemArea=early.match(/Issue\s+description[\s\S]{0,120}?Customer\s+statement\s*:\s*([\s\S]{1,900}?)(?=The\s+customer\s+claimed|Root\s+cause)/i)?.[1]||"";
+  const problemByCase=new Map();
+  const problemRe=/(?:^|\n)\s*([^()\n]{3,180}?)\s*\(([0-9+,&;\s-]+)\)\s*(?=\n|$)/g;
+  while ((match=problemRe.exec(problemArea))) {
+    const value=normalizeProblemText(match[1]);
+    if (value && !/^(?:issue\s+description|customer\s+statement)$/i.test(value)) assignMarkedValue(problemByCase,match[2],value);
+  }
+
+  const confirmedArea=firstMatch(early,[/Confirmed\s+for\s+lot\s+([\s\S]{1,180}?)(?=Not\s+confirmed|Not\s+conclusive|II\.|$)/i]);
+  const notConfirmedArea=firstMatch(early,[/Not\s+confirmed\s+for\s+lot\s+([\s\S]{1,220}?)(?=Not\s+conclusive|II\.|$)/i]);
+  const confirmedLots=new Set(confirmedArea.match(/\b\d{7,9}\b/g)||[]);
+  const notConfirmedLots=new Set(notConfirmedArea.match(/\b\d{7,9}\b/g)||[]);
+
+  return [...ids.entries()].sort((a,b)=>a[0]-b[0]).map(([index,complaintNo])=>{
+    const materialNo=materialByCase.get(index)||base.materialNo;
+    const lot=lotByCase.get(index)||base.lot;
+    const complaintRegisteredDate=normalizeExtractedDate(dateByCase.get(index)||base.complaintRegisteredDate);
+    const problem=problemByCase.get(index)||base.problem;
+    let resultStatus=base.resultStatus;
+    if (confirmedLots.has(lot)) resultStatus="Confirmed";
+    else if (notConfirmedLots.has(lot)) resultStatus="Not confirmed";
+    const classification=complaintClassification(problem,problem);
+    const notice=`Multi-complaint report: case ${index} of ${ids.size}; review case-specific MR-FR and shared test evidence`;
+    return {
+      ...structuredClone(base),complaintNo,materialNo,lot,problem,formalProblem:problem,
+      customerReportedFailure:problem,rollsImplicated:rollsByCase.get(index)||base.rollsImplicated,
+      complaintRegisteredDate,daysToReport:daysBetweenDates(complaintRegisteredDate,base.reportDate),resultStatus,
+      productFamily:productFamily(materialNo),membraneType:membraneType(materialNo,base.productDescription),
+      standardizedSymptoms:classification.standardizedSymptoms,problemTypes:classification.problemTypes,lfaRelevance:classification.lfaRelevance,
+      warnings:mergeSummaryValue(base.warnings,notice)
+    };
+  });
+}
+
+function splitAcknowledgementEmailCases(text,base,filename) {
+  const starts=[...text.matchAll(/We\s+acknowledge\s+the\s+receipt\s+of\s+your\s+reported\s+complaint\s*\((Comp\s*-\s*\d{6,10})\)/gi)];
+  if (starts.length<2) return [base];
+  return starts.map((start,index)=>{
+    const end=starts[index+1]?.index ?? text.search(/Please\s+use\s+the\s+reference/i);
+    const block=text.slice(start.index,end>start.index?end:text.length);
+    const record=parseRecord(block,filename,"msg");
+    record.complaintNo=start[1].replace(/\s+/g,"").replace(/^comp/i,"Comp");
+    record.customerCompany=customerFromFilename(filename)||base.customerCompany;
+    record.warnings=mergeSummaryValue(record.warnings,`Multi-complaint email: extracted complaint ${index+1} of ${starts.length}`);
+    return record;
+  });
+}
+
+async function extractMany(name, buffer) {
   const ext = name.toLowerCase().split(".").pop();
-  if (ext === "pdf") return parseRecord(await pdfText(buffer), name, "pdf");
-  if (ext === "msg") return parseRecord(await msgText(buffer), name, "msg");
+  if (ext === "pdf") {
+    const text=await pdfText(buffer);
+    return splitNumberedPdfCases(text,parseRecord(text,name,"pdf"));
+  }
+  if (ext === "msg") {
+    const text=await msgText(buffer);
+    return splitAcknowledgementEmailCases(text,parseRecord(text,name,"msg"),name);
+  }
   throw new Error(`Unsupported file: ${name}`);
+}
+
+async function extractOne(name, buffer) {
+  return (await extractMany(name,buffer))[0];
 }
 
 async function expandFiles(fileList) {
@@ -776,14 +1033,14 @@ function syncRecordsFromDom() {
 }
 
 function recordUiKey(record) {
-  return normalizeId(record?.complaintNo)||normalizeId(record?.sourceFile);
+  return normalizeComplaintId(record?.complaintNo)||normalizeId(record?.sourceFile);
 }
 
 function matchingRecordIndex(record) {
-  const complaint=normalizeId(record.complaintNo);
+  const complaint=normalizeComplaintId(record.complaintNo);
   if (complaint) {
-    const byComplaint=records.findIndex(existing=>normalizeId(existing.complaintNo)===complaint);
-    if (byComplaint>=0) return byComplaint;
+    const byComplaint=records.findIndex(existing=>normalizeComplaintId(existing.complaintNo)===complaint);
+    return byComplaint;
   }
   const source=normalizeId(record.sourceFile);
   return source ? records.findIndex(existing=>normalizeId(existing.sourceFile)===source) : -1;
@@ -956,6 +1213,7 @@ function displayCellValue(value) {
     if (value.text!==undefined) return String(value.text);
     if (value.result!==undefined) return displayCellValue(value.result);
     if (Array.isArray(value.richText)) return value.richText.map(part=>part.text||"").join("");
+    if (value.formula!==undefined || value.sharedFormula!==undefined) return "";
   }
   return String(value).trim();
 }
@@ -1004,18 +1262,18 @@ function objectsFromMatrix(matrix, headerIndex) {
 }
 
 const SUMMARY_ALIASES = {
-  complaintNo:["complaint notification","complaint number","complaint no","complaint","notification","complaint #"],
+  complaintNo:["complaint notification","complaint number","complaint no","comp","complaint","notification","complaint #"],
   lot:["lot","lots","lot no","lot number","batch","batch no","batch number"],
   customer:["customer company","end customer","customer","company name","company"],
   productFamily:["product family","membrane type","product"],
   materialNo:["material no","material number","article no","article number"],
   problem:["problem","problems","reported symptom","complaint symptom","issue description","formal issue description","customer reported failure","reason"],
-  standardizedSymptoms:["standardized symptoms","standardized symptom"],
+  standardizedSymptoms:["standardized symptoms","standardized symptom","standardized symptom s"],
   problemType:["problem type"],
-  result:["result status","result","complaint status","final result","final assessment root cause","final scope decision","conclusion"],
+  result:["result status","result","complaint status","claim decision","final result","final assessment root cause","final scope decision","conclusion"],
   tests:["tests assays applied","tests performed","test performed","assays applied","standard test","test","assay"],
-  rollsImplicated:["rolls implicated","implicated units","units implicated","number of roll implicated"],
-  samplesReceived:["samples received","sample received","number of sample received"],
+  rollsImplicated:["rolls implicated","amount frs","implicated units","units implicated","number of roll implicated"],
+  samplesReceived:["samples received","samples received qty","sample received","number of sample received"],
   registeredDate:["complaint registered date","registered date","registration date"],
   reportDate:["report date","final report date"],
   days:["days","elapsed days"]
@@ -1027,6 +1285,10 @@ function valueByAliases(row, aliases) {
     const exact=entries.find(([header])=>header===alias);
     if (exact?.[1]) return exact[1];
   }
+  for (const alias of aliases.filter(value=>value.length>=6)) {
+    const suffix=entries.find(([header])=>header.endsWith(` ${alias}`));
+    if (suffix?.[1]) return suffix[1];
+  }
   return "";
 }
 
@@ -1034,6 +1296,9 @@ function summaryRowFromObject(row, sourceSheet) {
   const result={sourceSheets:sourceSheet};
   for (const [key,aliases] of Object.entries(SUMMARY_ALIASES)) result[key]=valueByAliases(row,aliases);
   result.productFamily=normalizedProductFamily(result.materialNo,result.productFamily);
+  result.customer=canonicalCustomerName(result.customer);
+  if (/^claim\s+accepted$/i.test(result.result)) result.result="Confirmed";
+  if (/^claim\s+not\s+accepted$/i.test(result.result)) result.result="Not confirmed";
   for (const key of ["registeredDate","reportDate"]) {
     if (/^\d{5}(?:\.\d+)?$/.test(result[key])) {
       const date=new Date(Date.UTC(1899,11,30)+Number(result[key])*86400000);
@@ -1055,10 +1320,31 @@ function mergeSummaryValue(current,incoming) {
 function mergeSummaryRows(target,incoming) {
   for (const key of Object.keys(incoming)) {
     if (key==="lotComplaintCount") continue;
+    if (key==="complaintNo" && target[key] && normalizeComplaintId(target[key])===normalizeComplaintId(incoming[key])) {
+      const values=[target[key],incoming[key]].filter(Boolean);
+      const compStyle=values.find(value=>/^comp/i.test(value));
+      target[key]=compStyle||values.sort((a,b)=>String(a).length-String(b).length)[0];
+      continue;
+    }
     if (["registeredDate","reportDate","days"].includes(key) && target[key]) continue;
     target[key]=mergeSummaryValue(target[key],incoming[key]);
   }
   return target;
+}
+
+function reconcileCustomerNames(dataset) {
+  const allNames=[...new Set(dataset.flatMap(row=>splitUniqueValues(row.customer)).map(canonicalCustomerName).filter(Boolean))];
+  const detailed=allNames.filter(value=>value.length>=14);
+  for (const row of dataset) {
+    const reconciled=splitUniqueValues(row.customer).map(value=>{
+      const current=canonicalCustomerName(value);
+      const firstToken=normalizeHeader(current).split(" ").find(token=>token.length>=4&&!/^(?:hangzhou|shenzhen|guangzhou|nanjing|anhui|sichuan|qingdao|beijing|company|biotech|technology)$/.test(token))||"";
+      if (!firstToken) return current;
+      const candidates=detailed.filter(candidate=>normalizeHeader(candidate).split(" ").includes(firstToken));
+      return candidates.sort((a,b)=>b.length-a.length)[0]||current;
+    });
+    row.customer=[...new Set(reconciled.filter(Boolean))].join("; ");
+  }
 }
 
 function shouldIncludeSummaryRow(row,sourceSheet) {
@@ -1068,7 +1354,7 @@ function shouldIncludeSummaryRow(row,sourceSheet) {
 }
 
 function complaintKey(row,index) {
-  const complaint=normalizeId(row.complaintNo);
+  const complaint=normalizeComplaintId(row.complaintNo);
   if (complaint) return `complaint:${complaint}`;
   const lot=normalizeId(row.lot), problem=normalizeId(row.problem), result=normalizeId(row.result);
   return lot||problem?`unidentified:${lot}|${problem}|${result}`:`row:${index}`;
@@ -1079,7 +1365,7 @@ function recordToSummaryRow(record) {
   return {
     complaintNo:displayCellValue(category["Complaint / Notification"]),
     lot:displayCellValue(category["Lot"]),
-    customer:displayCellValue(category["Customer Company"]),
+    customer:canonicalCustomerName(displayCellValue(category["Customer Company"])),
     productFamily:displayCellValue(category["Product Family"]),
     materialNo:displayCellValue(category["Material No."]),
     problem:displayCellValue(category["Problem"]||category["Customer Reported Failure"]),
@@ -1102,16 +1388,29 @@ function lotTokens(value) {
 
 async function appendWorkbookComplaintRows(raw,buffer,fileName) {
   const sourceLabel=sheetName=>fileName?`${fileName} › ${sheetName}`:sheetName;
+  const appendRows=(rows,sheetName)=>{
+    let carry={};
+    const isEvidence=/test|evidence/i.test(sheetName);
+    for (const row of rows) {
+      const normalized=summaryRowFromObject(row,sourceLabel(sheetName));
+      if (isEvidence) {
+        const contextKeys=["complaintNo","lot","customer","productFamily","materialNo","problem","result","rollsImplicated","samplesReceived","registeredDate","reportDate"];
+        if (normalized.complaintNo) carry={};
+        for (const key of contextKeys) {
+          if (normalized[key]) carry[key]=normalized[key];
+          else if (carry[key]) normalized[key]=carry[key];
+        }
+      }
+      if (shouldIncludeSummaryRow(normalized,sheetName)) raw.push(normalized);
+    }
+  };
   try {
     const wb=await loadWorkbook(buffer.slice(0));
     for (const ws of wb.worksheets) {
       if (ws.name===SUMMARY_SHEET || /syndrome.*(?:guide|simple)/i.test(ws.name)) continue;
       const matrix=worksheetMatrix(ws);
       const headerIndex=detectComplaintHeaderRow(matrix);
-      for (const row of objectsFromMatrix(matrix,headerIndex)) {
-        const normalized=summaryRowFromObject(row,sourceLabel(ws.name));
-        if (shouldIncludeSummaryRow(normalized,ws.name)) raw.push(normalized);
-      }
+      appendRows(objectsFromMatrix(matrix,headerIndex),ws.name);
     }
   } catch (_) {
     const sheets=await readReferenceWorkbook(buffer.slice(0));
@@ -1120,10 +1419,7 @@ async function appendWorkbookComplaintRows(raw,buffer,fileName) {
       const matrix=[];
       for (let i=0;i<matrixWithBlank.length;i++) matrix.push(matrixWithBlank[i]||[]);
       const headerIndex=detectComplaintHeaderRow(matrix);
-      for (const row of objectsFromMatrix(matrix,headerIndex)) {
-        const normalized=summaryRowFromObject(row,sourceLabel(sheetName));
-        if (shouldIncludeSummaryRow(normalized,sheetName)) raw.push(normalized);
-      }
+      appendRows(objectsFromMatrix(matrix,headerIndex),sheetName);
     }
   }
 }
@@ -1140,7 +1436,7 @@ async function extractSummarySourceRecords(source) {
   source.records=[];
   source.errors=[];
   for (const item of expanded) {
-    try { source.records.push(await extractOne(item.name,item.buffer)); }
+    try { source.records.push(...await extractMany(item.name,item.buffer)); }
     catch(err) { source.errors.push(`${item.name}: ${err.message}`); }
   }
   return source.records;
@@ -1167,10 +1463,14 @@ async function collectComplaintDataset() {
   const dataset=[...merged.values()];
   dataset.forEach(row=>{
     row.productFamily=normalizedProductFamily(row.materialNo,row.productFamily);
+    row.customer=canonicalCustomerName(row.customer);
+    const calculated=daysBetweenDates(row.registeredDate,row.reportDate);
+    if (!/^\d+$/.test(String(row.days||"")) && calculated!=="") row.days=String(calculated);
   });
+  reconcileCustomerNames(dataset);
   const lotCounts=new Map();
   dataset.forEach((row,index)=>{
-    const uniqueComplaint=normalizeId(row.complaintNo);
+    const uniqueComplaint=normalizeComplaintId(row.complaintNo);
     if (!uniqueComplaint) return;
     for (const lot of new Set(lotTokens(row.lot))) {
       if (!lotCounts.has(lot)) lotCounts.set(lot,new Set());
@@ -1231,11 +1531,57 @@ function renderSummaryMetrics(dataset) {
   const lots=new Set(dataset.flatMap(row=>lotTokens(row.lot)));
   const customers=new Set(dataset.flatMap(row=>splitUniqueValues(row.customer)));
   const tested=dataset.filter(row=>row.tests).length;
+  const rollTotal=dataset.reduce((sum,row)=>sum+(Number(String(row.rollsImplicated||"").match(/\d+/)?.[0])||0),0);
+  const numericDays=dataset.map(row=>Number(row.days)).filter(value=>Number.isFinite(value)&&value>=0);
+  const averageDays=numericDays.length?Math.round(numericDays.reduce((sum,value)=>sum+value,0)/numericDays.length):0;
   $("summaryMetrics").innerHTML=`
     <div class="metric"><strong>${dataset.length}</strong><span>unique complaint${dataset.length===1?"":"s"}</span></div>
     <div class="metric"><strong>${lots.size}</strong><span>complaint lot${lots.size===1?"":"s"}</span></div>
     <div class="metric"><strong>${customers.size}</strong><span>end customer${customers.size===1?"":"s"}</span></div>
-    <div class="metric"><strong>${tested}</strong><span>complaint${tested===1?"":"s"} with tests listed</span></div>`;
+    <div class="metric"><strong>${tested}</strong><span>complaint${tested===1?"":"s"} with tests listed</span></div>
+    <div class="metric"><strong>${rollTotal}</strong><span>implicated roll${rollTotal===1?"":"s"} recorded</span></div>
+    <div class="metric"><strong>${averageDays||"—"}</strong><span>average days to report${numericDays.length?` (${numericDays.length} cases)`:""}</span></div>`;
+}
+
+function topCountEntries(values,limit=8) {
+  const counts=new Map();
+  for (const value of values.flatMap(item=>splitUniqueValues(item))) {
+    if (!value || /^review required$/i.test(value)) continue;
+    counts.set(value,(counts.get(value)||0)+1);
+  }
+  return [...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,limit);
+}
+
+function overviewList(title,entries,empty="No information recorded") {
+  return `<section class="overview-card"><h3>${esc(title)}</h3>${entries.length
+    ?`<table><thead><tr><th>Item</th><th>Complaints</th></tr></thead><tbody>${entries.map(([label,count])=>`<tr><td>${esc(label)}</td><td>${count}</td></tr>`).join("")}</tbody></table>`
+    :`<p class="hint">${esc(empty)}</p>`}</section>`;
+}
+
+function renderSummaryOverview(dataset) {
+  const target=$("summaryOverview");
+  if (!target) return;
+  if (!dataset.length) { target.innerHTML=""; return; }
+  const lotEntries=topCountEntries(dataset.flatMap(row=>lotTokens(row.lot))).filter(([,count])=>count>1);
+  const symptomEntries=topCountEntries(dataset.flatMap(row=>symptomTokensForRow(row)));
+  const customerEntries=topCountEntries(dataset.map(row=>row.customer));
+  const testEntries=topCountEntries(dataset.map(row=>row.tests));
+  const required=["complaintNo","lot","customer","productFamily","problem","result"];
+  const quality=required.map(key=>({key,label:SUMMARY_FIELDS.find(field=>field.key===key)?.label||key,count:dataset.filter(row=>row[key]).length}));
+  const testCoverage=dataset.filter(row=>row.tests).length;
+  const daysCoverage=dataset.filter(row=>/^\d+$/.test(String(row.days||""))).length;
+  target.innerHTML=`<div class="overview-heading"><h2>Complaint Overview</h2><p class="hint">The tables below summarize recurring lots, symptoms, customers, tests and data completeness. Select columns below for case-level detail.</p></div>
+    <div class="overview-grid">
+      ${overviewList("Recurring lots",lotEntries,"No repeated lots found")}
+      ${overviewList("Frequent symptoms",symptomEntries)}
+      ${overviewList("Customers with most complaints",customerEntries)}
+      ${overviewList("Most-used tests",testEntries,"No tests recorded")}
+      <section class="overview-card"><h3>Data completeness</h3><table><thead><tr><th>Field</th><th>Coverage</th></tr></thead><tbody>
+        ${quality.map(item=>`<tr><td>${esc(item.label)}</td><td>${item.count}/${dataset.length}</td></tr>`).join("")}
+        <tr><td>Tests performed</td><td>${testCoverage}/${dataset.length}</td></tr>
+        <tr><td>Numeric days to report</td><td>${daysCoverage}/${dataset.length}</td></tr>
+      </tbody></table></section>
+    </div>`;
 }
 
 async function refreshSummary() {
@@ -1243,6 +1589,7 @@ async function refreshSummary() {
   try {
     summaryDataset=await collectComplaintDataset();
     renderSummaryMetrics(summaryDataset);
+    renderSummaryOverview(summaryDataset);
     $("summaryResult").innerHTML=renderDatasetTable(summaryDataset,selectedSummaryFields());
     $("summaryExcelStatus").className="status good";
     const sourceCount=summarySources.length+(workbookBuffer?1:0);
@@ -1279,7 +1626,8 @@ function formatSheet(ws, hasSource=false) {
     "Data Quality / Notes":38,"Material No.":24,"Complaint Registered Date":20,"Report Date":16,"Days":12,"Sample Source":22,"Sample ID":28,
     "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
     "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
-    "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,
+    "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,"Complaint Number":24,
+    "End Customer":28,"Tests Performed":38,"Final Result / Status":22,"Registered Date":18,
     "Source File":34
   };
   const headers=ws.getRow(1).values.slice(1).map(h=>String(h||""));
@@ -1295,7 +1643,7 @@ function formatSheet(ws, hasSource=false) {
   for (let r=2;r<=ws.rowCount;r++) {
     ws.getRow(r).alignment={vertical:"top",wrapText:true};
   }
-  for (const dateHeader of ["Complaint Registered Date","Report Date"]) {
+  for (const dateHeader of ["Complaint Registered Date","Registered Date","Report Date"]) {
     const index=headers.indexOf(dateHeader)+1;
     if (index>0) for (let r=2;r<=ws.rowCount;r++) ws.getCell(r,index).numFmt="dd.mm.yyyy";
   }
@@ -1310,6 +1658,18 @@ function writeSheet(ws, headers, rows, hasSource=false) {
 }
 
 function normalizeId(v) { return String(v||"").trim().toLowerCase(); }
+
+function normalizeComplaintId(v) {
+  const text=normalizeId(v).replace(/[–—]/g,"-");
+  const match=text.match(/^(?:comp(?:laint)?[-\s]*)?0*(\d+)$/i);
+  return match?String(Number(match[1])):text;
+}
+
+function hasManagedHeaders(ws, expectedHeaders) {
+  if (!ws || ws.rowCount<1) return false;
+  const actual=ws.getRow(1).values.slice(1).map(normalizeHeader);
+  return expectedHeaders.every(header=>actual.includes(normalizeHeader(header)));
+}
 
 function selectedExportSheets() {
   return new Set([...document.querySelectorAll("[data-export-sheet]:checked")].map(input=>input.value).filter(name=>MANAGED_SHEETS.includes(name)));
@@ -1369,6 +1729,59 @@ function recordToEvidenceRows(r) {
   }));
 }
 
+function categoryRowsToComplaintSummary(categoryRows) {
+  const merged=new Map();
+  for (const group of CATEGORY_SHEETS) {
+    for (const row of categoryRows[group]) {
+      const complaint=displayCellValue(row["Complaint / Notification"]);
+      if (!complaint) continue;
+      const key=normalizeComplaintId(complaint);
+      const item={
+        "Complaint Number":complaint,
+        "Lot":displayCellValue(row["Lot"]),
+        "Product Family":displayCellValue(row["Product Family"]),
+        "Material No.":displayCellValue(row["Material No."]),
+        "Membrane Type":displayCellValue(row["Membrane Type"]),
+        "End Customer":displayCellValue(row["Customer Company"]),
+        "Problem":displayCellValue(row["Problem"]),
+        "Customer Reported Failure":displayCellValue(row["Customer Reported Failure"]),
+        "Standardized Symptom(s)":displayCellValue(row["Standardized Symptom(s)"]),
+        "Problem Type":displayCellValue(row["Problem Type"]),
+        "Tests Performed":displayCellValue(row["Tests / Assays Applied"]),
+        "Final Result / Status":displayCellValue(row["Result / Status"]),
+        "Rolls Implicated":displayCellValue(row["Rolls Implicated"]),
+        "Samples Received":displayCellValue(row["Samples Received"]),
+        "MR-FR(s)":displayCellValue(row["MR-FR (s)"]||row["MR-FR Area(s)"]),
+        "Registered Date":row["Complaint Registered Date"]||"",
+        "Report Date":row["Report Date"]||"",
+        "Days":displayCellValue(row["Days"]),
+        "Data Quality / Notes":displayCellValue(row["Data Quality / Notes"]),
+        "Source Group":group
+      };
+      if (!merged.has(key)) merged.set(key,item);
+      else {
+        const current=merged.get(key);
+        for (const header of COMPLAINT_SUMMARY_HEADERS) {
+          if (!displayCellValue(current[header]) && displayCellValue(item[header])) current[header]=item[header];
+        }
+      }
+    }
+  }
+  return [...merged.values()].sort((a,b)=>String(a["Complaint Number"]).localeCompare(String(b["Complaint Number"]),undefined,{numeric:true}));
+}
+
+function mergeExistingCategoryRow(existing,incoming) {
+  if (!existing) return incoming;
+  const merged={...existing};
+  for (const [header,value] of Object.entries(incoming)) {
+    if (value!=="" && value!==null && value!==undefined) merged[header]=value;
+  }
+  const oldCustomer=displayCellValue(existing["Customer Company"]);
+  const newCustomer=displayCellValue(incoming["Customer Company"]);
+  if (oldCustomer && (!newCustomer || oldCustomer.length>newCustomer.length+5)) merged["Customer Company"]=existing["Customer Company"];
+  return merged;
+}
+
 function sortCategory(rows) {
   return rows.sort((a,b)=>{
     const na=Number(String(a["Lot"]||"").match(/\d+/)?.[0]||1e18);
@@ -1388,6 +1801,7 @@ async function buildUpdatedWorkbook() {
   syncRecordsFromDom();
   if (!records.length) throw new Error("Extract at least one complaint report first.");
   const selectedSheets=selectedExportSheets();
+  lastPreservedSheetNames=[];
   if (!selectedSheets.size) throw new Error("Tick at least one sheet to export.");
   let wb;
   if (!workbookBuffer) {
@@ -1407,13 +1821,16 @@ async function buildUpdatedWorkbook() {
   for (const name of CATEGORY_SHEETS) categoryRows[name]=sheetRows(wb.getWorksheet(name));
 
   for (const r of records) {
-    const id=normalizeId(r.complaintNo);
+    const id=normalizeComplaintId(r.complaintNo);
     if (!id) continue;
+    let existing=null;
     for (const name of CATEGORY_SHEETS) {
-      categoryRows[name]=categoryRows[name].filter(x=>normalizeId(x["Complaint / Notification"])!==id);
+      const matched=categoryRows[name].find(x=>normalizeComplaintId(x["Complaint / Notification"])===id);
+      if (matched && !existing) existing=matched;
+      categoryRows[name]=categoryRows[name].filter(x=>normalizeComplaintId(x["Complaint / Notification"])!==id);
     }
     const group=CATEGORY_SHEETS.includes(r.sourceGroup)?r.sourceGroup:"Final Reports";
-    categoryRows[group].push(recordToCategoryRow(r));
+    categoryRows[group].push(mergeExistingCategoryRow(existing,recordToCategoryRow(r)));
   }
 
   for (const name of CATEGORY_SHEETS) {
@@ -1425,13 +1842,15 @@ async function buildUpdatedWorkbook() {
 
   let evidenceRows=sheetRows(wb.getWorksheet(EVIDENCE_SHEET));
   for (const r of records) {
-    const id=normalizeId(r.complaintNo);
+    const id=normalizeComplaintId(r.complaintNo);
     if (!id) continue;
-    evidenceRows=evidenceRows.filter(x=>normalizeId(x["Complaint / Notification"])!==id);
+    evidenceRows=evidenceRows.filter(x=>normalizeComplaintId(x["Complaint / Notification"])!==id);
     evidenceRows.push(...recordToEvidenceRows(r));
   }
   if (selectedSheets.has(EVIDENCE_SHEET)) writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
   else removeSheetIfPresent(wb,EVIDENCE_SHEET);
+  if (selectedSheets.has(COMPLAINT_SUMMARY_SHEET)) writeSheet(ensureSheet(wb,COMPLAINT_SUMMARY_SHEET),COMPLAINT_SUMMARY_HEADERS,categoryRowsToComplaintSummary(categoryRows),false);
+  else removeSheetIfPresent(wb,COMPLAINT_SUMMARY_SHEET);
   if (selectedSheets.has(SUMMARY_SHEET)) writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
   else removeSheetIfPresent(wb,SUMMARY_SHEET);
 
@@ -1447,8 +1866,13 @@ async function buildUpdatedWorkbook() {
   }
   for (const fam of FAMILY_SHEETS) {
     if (selectedSheets.has(fam)) {
-      const ws=ensureSheet(wb,fam);
-      writeSheet(ws,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
+      const existing=wb.getWorksheet(fam);
+      if (existing && !hasManagedHeaders(existing,FAMILY_HEADERS)) {
+        lastPreservedSheetNames.push(fam);
+      } else {
+        const ws=existing||ensureSheet(wb,fam);
+        writeSheet(ws,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
+      }
     } else removeSheetIfPresent(wb,fam);
   }
 
@@ -1501,7 +1925,7 @@ async function searchHistory(lot) {
 function deduplicateHistoryRows(rows) {
   const merged=new Map();
   rows.forEach((row,index)=>{
-    const id=normalizeId(row["Complaint / Notification"]);
+    const id=normalizeComplaintId(row["Complaint / Notification"]);
     const key=id?`id:${id}`:`row:${index}`;
     if (!merged.has(key)) {
       merged.set(key,{...row});
@@ -1667,7 +2091,7 @@ $("extractBtn").onclick=async()=>{
     const expanded=await expandFiles(files);
     const newRecords=[];
     for (const f of expanded) {
-      try { newRecords.push(await extractOne(f.name,f.buffer)); }
+      try { newRecords.push(...await extractMany(f.name,f.buffer)); }
       catch(err) {
         newRecords.push({
           sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
@@ -1774,7 +2198,10 @@ $("buildBtn").onclick=async()=>{
       :workbookMode==="reference-readonly"
         ?"New extracted workbook created. The reference workbook was not changed."
         :"New Excel workbook created and downloaded from the extracted reports.";
-    $("buildStatus").textContent=`${prefix} Workbook sheets (${lastBuiltSheetNames.length}): ${lastBuiltSheetNames.join(", ")}.`;
+    const preserved=lastPreservedSheetNames.length
+      ?` Legacy-format sheet${lastPreservedSheetNames.length===1?"":"s"} preserved unchanged: ${lastPreservedSheetNames.join(", ")}. New report rows are available in Complaint Summary and the category sheets.`
+      :"";
+    $("buildStatus").textContent=`${prefix} Workbook sheets (${lastBuiltSheetNames.length}): ${lastBuiltSheetNames.join(", ")}.${preserved}`;
   } catch(err) {
     $("buildStatus").className="status bad";
     $("buildStatus").textContent=err.message;
@@ -1846,6 +2273,7 @@ $("clearSummaryFilesBtn").onclick=()=>{
   $("summaryExcelStatus").className="status";
   $("summaryExcelStatus").textContent="Selected summary source files were cleared. The export workbook and extracted reports were not changed.";
   $("summaryMetrics").innerHTML="";
+  $("summaryOverview").innerHTML="";
   $("summaryResult").innerHTML="";
 };
 
@@ -2021,6 +2449,7 @@ window.__reportExtractionDebug = {
   })),
   getSelectedSheets: () => [...selectedExportSheets()],
   getLastBuiltSheetNames: () => [...lastBuiltSheetNames],
+  getLastPreservedSheetNames: () => [...lastPreservedSheetNames],
   getSummaryDataset: () => summaryDataset.map(row=>structuredClone(row)),
   getSummarySources: () => summarySources.map(source=>({name:source.name,kind:source.kind,recordCount:source.records?.length||0,errorCount:source.errors?.length||0})),
   collectComplaintDataset,

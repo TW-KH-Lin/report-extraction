@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=7" />
+  <link rel="stylesheet" href="./styles.css?v=8" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -88,6 +88,7 @@
           <label><input type="checkbox" data-export-sheet value="Ongoing - Email" checked /> Ongoing - Email</label>
           <label><input type="checkbox" data-export-sheet value="Not in Detail Excel" checked /> Not in Detail Excel</label>
           <label><input type="checkbox" data-export-sheet value="Extracted Test Evidence" checked /> Extracted Test Evidence</label>
+          <label><input type="checkbox" data-export-sheet value="Complaint Summary" checked /> Complaint Summary</label>
           <label><input type="checkbox" data-export-sheet value="Lot &amp; Symptom Summary" checked /> Lot &amp; Symptom Summary</label>
           <label><input type="checkbox" data-export-sheet value="CN95" checked /> CN95</label>
           <label><input type="checkbox" data-export-sheet value="CN140ub" checked /> CN140ub</label>
@@ -131,6 +132,7 @@
         </div>
         <div id="summaryFieldOptions" class="summary-field-options"></div>
         <div id="summaryMetrics" class="summary-metrics"></div>
+        <div id="summaryOverview" class="summary-overview"></div>
         <div id="summaryResult" class="table-scroll"></div>
       </section>
     </div>
@@ -196,6 +198,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=23"></script>
+  <script type="module" src="./app.js?v=26"></script>
 </body>
 </html>
