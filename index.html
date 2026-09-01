@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=3" />
+  <link rel="stylesheet" href="./styles.css?v=4" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -20,6 +20,13 @@
   </header>
 
   <main>
+    <nav class="app-tabs" aria-label="Report Extraction tools">
+      <button type="button" class="app-tab-button active" data-app-tab="extractView">Extract &amp; Export</button>
+      <button type="button" class="app-tab-button" data-app-tab="summaryView">Workbook Summary</button>
+      <button type="button" class="app-tab-button" data-app-tab="searchView">Quick Search</button>
+    </nav>
+
+    <div id="extractView" class="app-view">
     <section class="panel">
       <h2>1. Load an existing Excel workbook (optional)</h2>
       <p class="hint">Skip this step to create a brand-new Excel workbook. If selected, your workbook is read locally by your browser.</p>
@@ -96,6 +103,55 @@
       <button id="buildBtn" class="primary">Create Excel file</button>
       <div id="buildStatus" class="status"></div>
     </section>
+    </div>
+
+    <div id="summaryView" class="app-view" hidden>
+      <section class="panel">
+        <h2>Workbook Summary</h2>
+        <p class="hint">Choose one or more Excel workbooks and report files, then build one searchable complaint list from all relevant worksheets and reports. Current extracted reports are included automatically. Everything stays in this browser.</p>
+        <div class="summary-upload-row">
+          <input id="summarySourceFiles" type="file" accept=".xlsx,.pdf,.msg,.zip" multiple />
+          <button id="summaryBtn" type="button" class="primary">Create summary</button>
+          <button id="clearSummaryFilesBtn" type="button" class="secondary">Clear selected files</button>
+        </div>
+        <div id="summaryExcelStatus" class="status"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title-row">
+          <div>
+            <h2>Choose information to list</h2>
+            <p class="hint">Tick only the columns you want to see. Complaint counts are calculated from unique complaint numbers for each lot.</p>
+          </div>
+          <div class="review-actions">
+            <button id="summaryBasicBtn" type="button" class="secondary">Essential fields</button>
+            <button id="summaryAllBtn" type="button" class="secondary">Tick all</button>
+          </div>
+        </div>
+        <div id="summaryFieldOptions" class="summary-field-options"></div>
+        <div id="summaryMetrics" class="summary-metrics"></div>
+        <div id="summaryResult" class="table-scroll"></div>
+      </section>
+    </div>
+
+    <div id="searchView" class="app-view" hidden>
+      <section class="panel">
+        <h2>Quick Search</h2>
+        <p class="hint">Look for a complaint number, lot, end customer, or any text in the selected workbook and current extracted reports.</p>
+        <div class="search-controls">
+          <select id="searchType" aria-label="Search field">
+            <option value="complaintNo">Complaint number</option>
+            <option value="lot">Lot</option>
+            <option value="customer">End customer</option>
+            <option value="any">Any information</option>
+          </select>
+          <input id="searchQuery" type="search" placeholder="Enter complaint number or lot" />
+          <button id="searchBtn" type="button" class="primary">Search</button>
+        </div>
+        <div id="searchStatus" class="status"></div>
+        <div id="searchResult" class="table-scroll"></div>
+      </section>
+    </div>
   </main>
 
   <footer>
@@ -107,6 +163,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=17"></script>
+  <script type="module" src="./app.js?v=18"></script>
 </body>
 </html>
