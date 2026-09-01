@@ -1770,7 +1770,10 @@ function showAppView(viewId) {
 }
 
 document.querySelectorAll("[data-app-tab]").forEach(button=>{
-  button.addEventListener("click",()=>showAppView(button.dataset.appTab));
+  button.addEventListener("click",()=>{
+    showAppView(button.dataset.appTab);
+    if (button.dataset.appTab==="searchView") refreshSearchChoices();
+  });
 });
 
 function renderSummaryFieldOptions() {
@@ -1811,11 +1814,49 @@ const SEARCH_RESULT_FIELDS = SUMMARY_FIELDS.filter(field=>[
   "result","tests","rollsImplicated","samplesReceived","registeredDate","reportDate","sourceSheets"
 ].includes(field.key));
 
+function matchesSearchFamily(row,family) {
+  if (!family) return true;
+  return splitUniqueValues(row.productFamily).some(value=>value.toLowerCase()===family.toLowerCase());
+}
+
+async function refreshSearchChoices() {
+  const valueSelect=$("searchValue");
+  const previous=valueSelect.value;
+  const searchType=$("searchType").value;
+  const family=$("searchFamily").value;
+  const noun=searchType==="lot"?"lot number":"complaint number";
+  valueSelect.disabled=true;
+  valueSelect.innerHTML=`<option value="">Loading ${esc(noun)}s...</option>`;
+  $("searchStatus").className="status";
+  $("searchStatus").textContent="Reading the selected workbooks and current extracted reports...";
+  try {
+    summaryDataset=await collectComplaintDataset();
+    const values=new Set();
+    for (const row of summaryDataset.filter(row=>matchesSearchFamily(row,family))) {
+      if (searchType==="lot") lotTokens(row.lot).forEach(value=>values.add(value));
+      else if (row.complaintNo) values.add(String(row.complaintNo).trim());
+    }
+    const sorted=[...values].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+    if (sorted.includes(previous)) valueSelect.value=previous;
+    valueSelect.disabled=!sorted.length;
+    $("searchStatus").className=sorted.length?"status good":"status bad";
+    $("searchStatus").textContent=sorted.length
+      ?`${sorted.length} ${noun}${sorted.length===1?"":"s"} available${family?` for ${family}`:""}.`
+      :`No ${noun}s are available${family?` for ${family}`:""}. Load source files in Workbook Summary first.`;
+    $("searchResult").innerHTML="";
+  } catch(err) {
+    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>`;
+    $("searchStatus").className="status bad";
+    $("searchStatus").textContent=`Could not load search choices: ${err.message}`;
+  }
+}
+
 async function runQuickSearch() {
-  const query=$("searchQuery").value.trim().toLowerCase();
+  const query=$("searchValue").value.trim();
   if (!query) {
     $("searchStatus").className="status bad";
-    $("searchStatus").textContent="Enter a complaint number, lot, customer, or search text.";
+    $("searchStatus").textContent=`Choose a ${$("searchType").value==="lot"?"lot":"complaint"} number.`;
     $("searchResult").innerHTML="";
     return;
   }
@@ -1824,11 +1865,11 @@ async function runQuickSearch() {
   try {
     summaryDataset=await collectComplaintDataset();
     const searchType=$("searchType").value;
+    const family=$("searchFamily").value;
     const matches=summaryDataset.filter(row=>{
-      if (searchType==="complaintNo") return String(row.complaintNo||"").toLowerCase().includes(query);
-      if (searchType==="lot") return lotTokens(row.lot).some(lot=>lot.toLowerCase().includes(query));
-      if (searchType==="customer") return String(row.customer||"").toLowerCase().includes(query);
-      return SUMMARY_FIELDS.some(field=>String(row[field.key]||"").toLowerCase().includes(query));
+      if (!matchesSearchFamily(row,family)) return false;
+      if (searchType==="complaintNo") return String(row.complaintNo||"").trim()===query;
+      return lotTokens(row.lot).some(lot=>lot===query);
     });
     $("searchStatus").className="status good";
     $("searchStatus").textContent=`Found ${matches.length} matching complaint${matches.length===1?"":"s"}.`;
@@ -1841,13 +1882,8 @@ async function runQuickSearch() {
 }
 
 $("searchBtn").onclick=runQuickSearch;
-$("searchQuery").addEventListener("keydown",event=>{
-  if (event.key==="Enter") runQuickSearch();
-});
-$("searchType").addEventListener("change",()=>{
-  const placeholders={complaintNo:"Enter complaint number",lot:"Enter lot number",customer:"Enter end customer",any:"Enter any text"};
-  $("searchQuery").placeholder=placeholders[$("searchType").value];
-});
+$("searchType").addEventListener("change",refreshSearchChoices);
+$("searchFamily").addEventListener("change",refreshSearchChoices);
 
 renderSummaryFieldOptions();
 renderRecords();
