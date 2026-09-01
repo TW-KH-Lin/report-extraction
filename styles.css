@@ -75,8 +75,20 @@ button {
 .summary-field-options input[type="checkbox"] { width:auto; min-width:0; padding:0; accent-color:#2f5597; }
 .summary-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:18px 0; }
 .summary-table { min-width:1050px; }
-.lot-detail-table { min-width:900px; }
-.lot-group-cell { min-width:150px; background:#eef4fa; color:#17365d; vertical-align:top; }
+.lot-family-filter {
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin:16px 0 4px;
+  padding:11px 13px; border:1px solid #cfd9e6; border-radius:9px; background:#f8fafc;
+}
+.lot-family-filter strong { color:#17365d; }
+.lot-family-filter label { display:flex; align-items:center; gap:6px; font-size:14px; }
+.lot-family-filter input { width:auto; min-width:0; padding:0; accent-color:#2f5597; }
+.lot-detail-table { min-width:1020px; }
+.lot-detail-table tbody tr.lot-tone-0 > td { background:#eef6ff; }
+.lot-detail-table tbody tr.lot-tone-1 > td { background:#fff7e8; }
+.lot-detail-table tbody tr.lot-tone-2 > td { background:#eef9f1; }
+.lot-detail-table tbody tr.lot-tone-3 > td { background:#f8f1fb; }
+.lot-group-cell { min-width:150px; color:#17365d; vertical-align:top; border-right:3px solid #93a8c2; }
+.lot-family-cell { min-width:115px; font-weight:700; color:#284b72; }
 .lot-group-cell strong, .lot-group-cell span { display:block; }
 .lot-group-cell span { margin-top:5px; font-size:14px; color:#334155; }
 .grid {
