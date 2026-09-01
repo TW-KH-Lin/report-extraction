@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=4" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -137,15 +137,23 @@
     <div id="searchView" class="app-view" hidden>
       <section class="panel">
         <h2>Quick Search</h2>
-        <p class="hint">Look for a complaint number, lot, end customer, or any text in the selected workbook and current extracted reports.</p>
+        <p class="hint">Choose whether to search by lot or complaint, narrow the list by product family, then select an available number. Choices are built locally from the selected workbooks and current extracted reports.</p>
         <div class="search-controls">
           <select id="searchType" aria-label="Search field">
-            <option value="complaintNo">Complaint number</option>
             <option value="lot">Lot</option>
-            <option value="customer">End customer</option>
-            <option value="any">Any information</option>
+            <option value="complaintNo">Complaint number</option>
           </select>
-          <input id="searchQuery" type="search" placeholder="Enter complaint number or lot" />
+          <select id="searchFamily" aria-label="Product family">
+            <option value="">All product families</option>
+            <option value="CN95">CN95</option>
+            <option value="CN110">CN110</option>
+            <option value="CN140">CN140</option>
+            <option value="CN140ub">CN140ub</option>
+            <option value="CN180">CN180</option>
+          </select>
+          <select id="searchValue" aria-label="Complaint or lot number" disabled>
+            <option value="">Choose a lot number</option>
+          </select>
           <button id="searchBtn" type="button" class="primary">Search</button>
         </div>
         <div id="searchStatus" class="status"></div>
@@ -163,6 +171,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=18"></script>
+  <script type="module" src="./app.js?v=20"></script>
 </body>
 </html>

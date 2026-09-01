@@ -62,8 +62,9 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Separate Workbook Summary tab that combines complaint information across relevant worksheets in multiple uploaded Excel files
 - Summary and Quick Search can also read PDF, MSG and ZIP report files without adding those files to the repository
 - Selectable summary columns, including complaint, lot, related-lot count, customer, reason, final result, tests and dates
+- Lot-only selection becomes a grouped view showing each lot's complaint count and the related complaint numbers, customers, reasons and results
 - One-row-per-complaint consolidation when the same complaint appears on several product or category sheets
-- Separate Quick Search tab for complaint number, lot, end customer or any workbook text
+- Separate Quick Search tab with linked dropdowns for search type, product family and available complaint or lot numbers
 - Workbook summary and search also include reports currently extracted in the browser
 - Complaint number
 - Complaint registered date, report date and elapsed days
