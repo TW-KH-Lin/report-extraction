@@ -106,6 +106,34 @@ const REVIEW_FIELD_DEFINITIONS = [
 const DEFAULT_REVIEW_COLUMNS = REVIEW_FIELD_DEFINITIONS
   .map((item,index)=>({id:`default-${index}`,header:item.label,field:item.key,supported:true,essential:Boolean(item.essential)}));
 const DEFAULT_REVIEW_PROFILE = {name:"Default report view",headerRow:-1,columns:DEFAULT_REVIEW_COLUMNS,isDefault:true};
+const COMPACT_CN_REVIEW_HEADERS = [
+  "Source Group","Lot","Zone(s)","MR-FR (s)","Complaint #","Problem","Result / Status",
+  "Material No.","Report Date","Standardized Symptom(s)","Problem Type","LFA Relevance"
+];
+const BUILT_IN_REVIEW_GROUP_HEADERS = {
+  "Complaint Information": [
+    "Complaint Number","Lot(s)","Membrane Type","Implicated Units","Sample Received",
+    "Registered Date","Report Date","Days","End Customer","Problem(s)","Result"
+  ],
+  "Complaint Summary": COMPLAINT_SUMMARY_HEADERS,
+  "Final Reports": CATEGORY_HEADERS,
+  "Ongoing - Email": CATEGORY_HEADERS,
+  "Not in Detail Excel": CATEGORY_HEADERS,
+  "CN95": COMPACT_CN_REVIEW_HEADERS,
+  "CN110": COMPACT_CN_REVIEW_HEADERS,
+  "CN140": COMPACT_CN_REVIEW_HEADERS,
+  "CN140ub": COMPACT_CN_REVIEW_HEADERS,
+  "CN180": COMPACT_CN_REVIEW_HEADERS,
+  "Combined Overview": [
+    "Final Report Date","Year","Complaint / Notification","Customer","Product Family","Material No",
+    "Batch","Reported Symptom","Claim Decision","Failure Family","Defect Classification","Historical Note",
+    "Detailed Report?","Complaint Status","Criticality","Root Cause in Process?","Failure Reproduced?",
+    "Detailed Final Assessment","Test Evidence?","Source"
+  ]
+};
+const BUILT_IN_REVIEW_PROFILES = Object.entries(BUILT_IN_REVIEW_GROUP_HEADERS).map(([name,headers])=>({
+  ...reviewProfileFromMatrix(name,[headers]),isBuiltIn:true
+}));
 
 const GENERIC_TEST_RULES = [
   {name:"Visual inspection",re:/\bvisual\s+inspection\b/i,purpose:"Appearance / physical defect review",method:"Inspect customer, retain or reference material and available photographs."},
@@ -127,9 +155,12 @@ let lastPreservedSheetNames = [];
 let summaryDataset = [];
 let summarySources = [];
 let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
-let reviewProfiles = [DEFAULT_REVIEW_PROFILE];
+let reviewProfiles = [DEFAULT_REVIEW_PROFILE,...BUILT_IN_REVIEW_PROFILES];
 let activeReviewProfileName = DEFAULT_REVIEW_PROFILE.name;
-const reviewSelections = new Map([[DEFAULT_REVIEW_PROFILE.name,new Set(DEFAULT_REVIEW_COLUMNS.filter(column=>column.essential).map(column=>column.id))]]);
+const reviewSelections = new Map(reviewProfiles.map(profile=>[
+  profile.name,
+  new Set(profile.columns.filter(column=>column.supported && (!profile.isDefault || column.essential)).map(column=>column.id))
+]));
 const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -1384,12 +1415,13 @@ function choosePreferredReviewProfile(profiles) {
 }
 
 function setReviewProfiles(profiles=[]) {
-  reviewProfiles=[DEFAULT_REVIEW_PROFILE,...profiles];
+  const hasWorkbookProfiles=profiles.length>0;
+  reviewProfiles=[DEFAULT_REVIEW_PROFILE,...(hasWorkbookProfiles?profiles:BUILT_IN_REVIEW_PROFILES)];
   reviewSelections.clear();
   for (const profile of reviewProfiles) {
     reviewSelections.set(profile.name,new Set(profile.columns.filter(column=>column.supported && (!profile.isDefault || column.essential)).map(column=>column.id)));
   }
-  activeReviewProfileName=choosePreferredReviewProfile(reviewProfiles);
+  activeReviewProfileName=hasWorkbookProfiles?choosePreferredReviewProfile(reviewProfiles):DEFAULT_REVIEW_PROFILE.name;
   renderReviewControls();
   renderRecords();
 }
@@ -1430,8 +1462,8 @@ function renderReviewColumnOptions() {
   const unsupported=profile.columns.length-supported;
   $("reviewFilterStatus").className=supported?"status good":"status";
   $("reviewFilterStatus").textContent=profile.isDefault
-    ? "No Excel group is required. This compact default view can be changed with the tick boxes."
-    : `${profile.name}: ${supported} worksheet column${supported===1?"":"s"} matched to report fields${unsupported?`; ${unsupported} worksheet column${unsupported===1?" is":"s are"} not available directly from the report`:""}.`;
+    ? "Use this compact view, choose a built-in worksheet group, or upload Excel to load its exact worksheet names and columns."
+    : `${profile.isBuiltIn?"Built-in group · ":""}${profile.name}: ${supported} worksheet column${supported===1?"":"s"} matched to report fields${unsupported?`; ${unsupported} worksheet column${unsupported===1?" is":"s are"} not available directly from the report`:""}.`;
   target.querySelectorAll("[data-review-column]").forEach(input=>{
     input.addEventListener("change",()=>{
       const next=reviewSelections.get(profile.name)||new Set();
