@@ -69,7 +69,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - **Show lot details** automatically opens a grouped view showing each lot's complaint count and the related complaint numbers, customers, reasons and results
 - Lot-detail groups use alternating background colors, show product family after the lot, and can be filtered instantly by CN type
 - One-row-per-complaint consolidation when the same complaint appears on several product or category sheets
-- Separate Quick Search tab with linked dropdowns in the order: end customer, membrane type, complaint number
+- Original Quick Search for lot or complaint number remains available, with optional product-family filtering
+- Additional linked Quick Search in the order: end customer, membrane type, complaint number
 - Quick Search complaint-number choices show the associated end-customer name beside each number
 - Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
 - Workbook summary and search also include reports currently extracted in the browser

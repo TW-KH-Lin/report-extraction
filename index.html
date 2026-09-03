@@ -161,6 +161,31 @@
       <section class="panel">
         <h2>Quick Search</h2>
         <div class="search-section first">
+        <h3>Find a lot or complaint</h3>
+        <p class="hint">Choose lot or complaint, select a product family if needed, then choose a number. Every number also shows its associated end customer.</p>
+        <div class="search-controls">
+          <select id="directSearchType" aria-label="Search field">
+            <option value="lot">Lot</option>
+            <option value="complaintNo">Complaint number</option>
+          </select>
+          <select id="directSearchFamily" aria-label="Product family">
+            <option value="">All product families</option>
+            <option value="CN95">CN95</option>
+            <option value="CN110">CN110</option>
+            <option value="CN140">CN140</option>
+            <option value="CN140ub">CN140ub</option>
+            <option value="CN180">CN180</option>
+          </select>
+          <select id="directSearchValue" aria-label="Complaint or lot number" disabled>
+            <option value="">Choose a lot number</option>
+          </select>
+          <button id="directSearchBtn" type="button" class="primary">Search</button>
+        </div>
+        <div id="directSearchStatus" class="status"></div>
+        <div id="directSearchResult" class="table-scroll"></div>
+        </div>
+
+        <div class="search-section">
         <h3>Find a customer complaint</h3>
         <p class="hint">Choose in this order: end customer → membrane type → complaint number. The result includes the related lot and full complaint information.</p>
         <div class="search-controls">
@@ -212,6 +237,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=30"></script>
+  <script type="module" src="./app.js?v=31"></script>
 </body>
 </html>

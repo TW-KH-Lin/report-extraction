@@ -2473,7 +2473,7 @@ document.querySelectorAll("[data-app-tab]").forEach(button=>{
   button.addEventListener("click",()=>{
     showAppView(button.dataset.appTab);
     if (button.dataset.appTab==="searchView") {
-      refreshSearchChoices().then(()=>refreshDecisionSymptomChoices());
+      refreshDirectSearchChoices().then(()=>refreshSearchChoices()).then(()=>refreshDecisionSymptomChoices());
     }
   });
 });
@@ -2603,6 +2603,78 @@ function renderDecisionSearch(rows) {
     </tr>`).join("")}</tbody></table>`;
 }
 
+async function refreshDirectSearchChoices() {
+  const valueSelect=$("directSearchValue");
+  const previous=valueSelect.value;
+  const searchType=$("directSearchType").value;
+  const family=$("directSearchFamily").value;
+  const noun=searchType==="lot"?"lot number":"complaint number";
+  valueSelect.disabled=true;
+  valueSelect.innerHTML=`<option value="">Loading ${esc(noun)}s...</option>`;
+  $("directSearchStatus").className="status";
+  $("directSearchStatus").textContent="Reading the selected workbooks and current extracted reports...";
+  try {
+    summaryDataset=await collectComplaintDataset();
+    const choices=new Map();
+    const addChoice=(value,customer)=>{
+      const cleanValue=String(value||"").trim();
+      if (!cleanValue) return;
+      if (!choices.has(cleanValue)) choices.set(cleanValue,new Set());
+      for (const name of splitUniqueValues(customer).map(canonicalCustomerName).filter(Boolean)) choices.get(cleanValue).add(name);
+    };
+    for (const row of summaryDataset.filter(row=>matchesSearchFamily(row,family))) {
+      if (searchType==="lot") lotTokens(row.lot).forEach(value=>addChoice(value,row.customer));
+      else if (row.complaintNo) addChoice(row.complaintNo,row.customer);
+    }
+    const sorted=[...choices.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>{
+      const customers=[...choices.get(value)].sort((a,b)=>a.localeCompare(b));
+      const customerLabel=customers.length?customers.join("; "):"End customer not recorded";
+      return `<option value="${esc(value)}">${esc(value)} — ${esc(customerLabel)}</option>`;
+    }).join("")}`;
+    if (sorted.includes(previous)) valueSelect.value=previous;
+    valueSelect.disabled=!sorted.length;
+    $("directSearchStatus").className=sorted.length?"status good":"status bad";
+    $("directSearchStatus").textContent=sorted.length
+      ?`${sorted.length} ${noun}${sorted.length===1?"":"s"} available${family?` for ${family}`:""}.`
+      :`No ${noun}s are available${family?` for ${family}`:""}. Load source files in Workbook Summary first.`;
+    $("directSearchResult").innerHTML="";
+  } catch(err) {
+    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>`;
+    $("directSearchStatus").className="status bad";
+    $("directSearchStatus").textContent=`Could not load search choices: ${err.message}`;
+  }
+}
+
+async function runDirectSearch() {
+  const query=$("directSearchValue").value.trim();
+  if (!query) {
+    $("directSearchStatus").className="status bad";
+    $("directSearchStatus").textContent=`Choose a ${$("directSearchType").value==="lot"?"lot":"complaint"} number.`;
+    $("directSearchResult").innerHTML="";
+    return;
+  }
+  $("directSearchStatus").className="status";
+  $("directSearchStatus").textContent="Searching workbook and current extracted reports...";
+  try {
+    summaryDataset=await collectComplaintDataset();
+    const searchType=$("directSearchType").value;
+    const family=$("directSearchFamily").value;
+    const matches=summaryDataset.filter(row=>{
+      if (!matchesSearchFamily(row,family)) return false;
+      if (searchType==="complaintNo") return String(row.complaintNo||"").trim()===query;
+      return lotTokens(row.lot).some(lot=>lot===query);
+    });
+    $("directSearchStatus").className="status good";
+    $("directSearchStatus").textContent=`Found ${matches.length} matching complaint${matches.length===1?"":"s"}.`;
+    $("directSearchResult").innerHTML=renderDatasetTable(matches,SEARCH_RESULT_FIELDS);
+  } catch(err) {
+    $("directSearchStatus").className="status bad";
+    $("directSearchStatus").textContent=`Search failed: ${err.message}`;
+    $("directSearchResult").innerHTML="";
+  }
+}
+
 async function refreshSearchChoices() {
   const customerSelect=$("searchCustomer");
   const familySelect=$("searchFamily");
@@ -2723,6 +2795,9 @@ function runDecisionSearch() {
 }
 
 $("searchBtn").onclick=runQuickSearch;
+$("directSearchBtn").onclick=runDirectSearch;
+$("directSearchType").addEventListener("change",refreshDirectSearchChoices);
+$("directSearchFamily").addEventListener("change",refreshDirectSearchChoices);
 $("searchCustomer").addEventListener("change",()=>{
   $("searchFamily").value="";
   $("searchValue").value="";
