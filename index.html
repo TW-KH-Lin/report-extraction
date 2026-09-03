@@ -32,25 +32,6 @@
       <p class="hint">Skip this step to create a brand-new Excel workbook. If selected, your workbook is read locally by your browser.</p>
       <input id="excelFile" type="file" accept=".xlsx" />
       <div id="excelStatus" class="status"></div>
-      <div class="review-filter" aria-labelledby="reviewFilterHeading">
-        <div class="review-filter-head">
-          <div>
-            <h3 id="reviewFilterHeading">Choose the information to display</h3>
-            <p class="hint">Built-in groups are available immediately. Upload Excel to load its exact worksheet names and columns, then tick only what you want to review. All extracted values are still kept for export.</p>
-          </div>
-          <label class="group-select-label">Worksheet group
-            <select id="reviewSheetSelect" aria-label="Worksheet group"></select>
-          </label>
-        </div>
-        <div class="review-filter-actions">
-          <button id="reviewEssentialBtn" type="button" class="secondary">Essential fields</button>
-          <button id="reviewSelectAllBtn" type="button" class="secondary">Tick supported columns</button>
-          <button id="reviewClearAllBtn" type="button" class="secondary">Untick all</button>
-          <label class="source-detail-toggle"><input id="reviewSourceDetails" type="checkbox" /> Show source text and extraction notes</label>
-        </div>
-        <div id="reviewColumnOptions" class="review-column-options"></div>
-        <div id="reviewFilterStatus" class="status"></div>
-      </div>
     </section>
 
     <section class="panel">
@@ -61,10 +42,30 @@
       <div id="extractStatus" class="status"></div>
     </section>
 
+    <section class="panel" aria-labelledby="reviewFilterHeading">
+      <div class="review-filter-head">
+        <div>
+          <h2 id="reviewFilterHeading">3. Choose the information to display</h2>
+          <p class="hint">Built-in groups are available immediately. Upload Excel to load its exact worksheet names and columns, then tick only what you want to review. All extracted values are still kept for export.</p>
+        </div>
+        <label class="group-select-label">Worksheet group
+          <select id="reviewSheetSelect" aria-label="Worksheet group"></select>
+        </label>
+      </div>
+      <div class="review-filter-actions">
+        <button id="reviewEssentialBtn" type="button" class="secondary">Essential fields</button>
+        <button id="reviewSelectAllBtn" type="button" class="secondary">Tick supported columns</button>
+        <button id="reviewClearAllBtn" type="button" class="secondary">Untick all</button>
+        <label class="source-detail-toggle"><input id="reviewSourceDetails" type="checkbox" /> Show source text and extraction notes</label>
+      </div>
+      <div id="reviewColumnOptions" class="review-column-options"></div>
+      <div id="reviewFilterStatus" class="status"></div>
+    </section>
+
     <section class="panel">
       <div class="panel-title-row">
         <div>
-          <h2>3. Review extracted information</h2>
+          <h2>4. Review extracted information</h2>
           <p class="hint">Only the fields ticked above are displayed. You can edit them before updating Excel.</p>
         </div>
         <div class="review-actions">
@@ -84,7 +85,7 @@
     </section>
 
     <section class="panel">
-      <h2>4. Check existing lot history</h2>
+      <h2>5. Check existing lot history</h2>
       <p class="hint">Counts unique complaints from the same lot and shows how often each symptom theme was reported.</p>
       <div class="history-controls">
         <input id="historyLot" placeholder="Lot number" />
@@ -94,7 +95,7 @@
     </section>
 
     <section class="panel">
-      <h2>5. Create or update Excel</h2>
+      <h2>6. Create or update Excel</h2>
       <p class="hint">
         One complaint number remains one row. Multiple MR / FR values remain together in one cell.
         Without an uploaded workbook, a new Excel file is created. Product-family sheets are rebuilt from all three categories,
