@@ -161,23 +161,17 @@
       <section class="panel">
         <h2>Quick Search</h2>
         <div class="search-section first">
-        <h3>Find a lot or complaint</h3>
-        <p class="hint">Choose whether to search by lot or complaint, narrow the list by product family, then select an available number. Choices are built locally from the selected workbooks and current extracted reports.</p>
+        <h3>Find a customer complaint</h3>
+        <p class="hint">Choose in this order: end customer → membrane type → complaint number. The result includes the related lot and full complaint information.</p>
         <div class="search-controls">
-          <select id="searchType" aria-label="Search field">
-            <option value="lot">Lot</option>
-            <option value="complaintNo">Complaint number</option>
+          <select id="searchCustomer" aria-label="End customer">
+            <option value="">Choose end customer</option>
           </select>
-          <select id="searchFamily" aria-label="Product family">
-            <option value="">All product families</option>
-            <option value="CN95">CN95</option>
-            <option value="CN110">CN110</option>
-            <option value="CN140">CN140</option>
-            <option value="CN140ub">CN140ub</option>
-            <option value="CN180">CN180</option>
+          <select id="searchFamily" aria-label="Membrane type" disabled>
+            <option value="">Choose membrane type</option>
           </select>
-          <select id="searchValue" aria-label="Complaint or lot number" disabled>
-            <option value="">Choose a lot number</option>
+          <select id="searchValue" aria-label="Complaint number" disabled>
+            <option value="">Choose complaint number</option>
           </select>
           <button id="searchBtn" type="button" class="primary">Search</button>
         </div>
@@ -218,6 +212,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=28"></script>
+  <script type="module" src="./app.js?v=30"></script>
 </body>
 </html>

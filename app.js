@@ -2539,6 +2539,12 @@ function matchesSearchFamily(row,family) {
   return splitUniqueValues(row.productFamily).some(value=>value.toLowerCase()===family.toLowerCase());
 }
 
+function matchesSearchCustomer(row,customer) {
+  if (!customer) return true;
+  const wanted=canonicalCustomerName(customer).toLowerCase();
+  return splitUniqueValues(row.customer).map(canonicalCustomerName).some(value=>value.toLowerCase()===wanted);
+}
+
 function symptomTokensForRow(row) {
   const listed=splitUniqueValues(row.standardizedSymptoms).filter(value=>value.toLowerCase()!=="review required");
   if (listed.length) return listed;
@@ -2598,30 +2604,67 @@ function renderDecisionSearch(rows) {
 }
 
 async function refreshSearchChoices() {
+  const customerSelect=$("searchCustomer");
+  const familySelect=$("searchFamily");
   const valueSelect=$("searchValue");
+  const previousCustomer=customerSelect.value;
+  const previousFamily=familySelect.value;
   const previous=valueSelect.value;
-  const searchType=$("searchType").value;
-  const family=$("searchFamily").value;
-  const noun=searchType==="lot"?"lot number":"complaint number";
+  const noun="complaint number";
+  customerSelect.disabled=true;
+  familySelect.disabled=true;
   valueSelect.disabled=true;
-  valueSelect.innerHTML=`<option value="">Loading ${esc(noun)}s...</option>`;
+  valueSelect.innerHTML=`<option value="">Loading complaint numbers...</option>`;
   $("searchStatus").className="status";
   $("searchStatus").textContent="Reading the selected workbooks and current extracted reports...";
   try {
     summaryDataset=await collectComplaintDataset();
-    const values=new Set();
-    for (const row of summaryDataset.filter(row=>matchesSearchFamily(row,family))) {
-      if (searchType==="lot") lotTokens(row.lot).forEach(value=>values.add(value));
-      else if (row.complaintNo) values.add(String(row.complaintNo).trim());
+    const customers=[...new Set(summaryDataset.flatMap(row=>splitUniqueValues(row.customer)).map(canonicalCustomerName).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    customerSelect.innerHTML=`<option value="">Choose end customer</option>${customers.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+    if (customers.includes(previousCustomer)) customerSelect.value=previousCustomer;
+    customerSelect.disabled=!customers.length;
+    const customer=customerSelect.value;
+
+    const familyRows=summaryDataset.filter(row=>matchesSearchCustomer(row,customer));
+    const families=[...new Set(familyRows.flatMap(row=>splitUniqueValues(row.productFamily)).filter(Boolean))]
+      .sort((a,b)=>{
+        const aIndex=LOT_FAMILY_ORDER.indexOf(a), bIndex=LOT_FAMILY_ORDER.indexOf(b);
+        return (aIndex<0?999:aIndex)-(bIndex<0?999:bIndex)||a.localeCompare(b);
+      });
+    familySelect.innerHTML=`<option value="">Choose membrane type</option>${families.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+    if (customer && families.includes(previousFamily)) familySelect.value=previousFamily;
+    familySelect.disabled=!customer||!families.length;
+    const family=familySelect.value;
+
+    const choices=new Map();
+    const addChoice=(value,customer)=>{
+      const cleanValue=String(value||"").trim();
+      if (!cleanValue) return;
+      if (!choices.has(cleanValue)) choices.set(cleanValue,new Set());
+      for (const name of splitUniqueValues(customer).map(canonicalCustomerName).filter(Boolean)) choices.get(cleanValue).add(name);
+    };
+    for (const row of summaryDataset.filter(row=>matchesSearchCustomer(row,customer)&&matchesSearchFamily(row,family))) {
+      if (row.complaintNo) addChoice(row.complaintNo,row.customer);
     }
-    const sorted=[...values].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
-    if (sorted.includes(previous)) valueSelect.value=previous;
-    valueSelect.disabled=!sorted.length;
-    $("searchStatus").className=sorted.length?"status good":"status bad";
-    $("searchStatus").textContent=sorted.length
-      ?`${sorted.length} ${noun}${sorted.length===1?"":"s"} available${family?` for ${family}`:""}.`
-      :`No ${noun}s are available${family?` for ${family}`:""}. Load source files in Workbook Summary first.`;
+    const sorted=[...choices.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>{
+      const customers=[...choices.get(value)].sort((a,b)=>a.localeCompare(b));
+      const customerLabel=customers.length?customers.join("; "):"End customer not recorded";
+      return `<option value="${esc(value)}">${esc(value)} — ${esc(customerLabel)}</option>`;
+    }).join("")}`;
+    if (customer && family && sorted.includes(previous)) valueSelect.value=previous;
+    valueSelect.disabled=!customer||!family||!sorted.length;
+    $("searchStatus").className=customers.length?"status good":"status bad";
+    $("searchStatus").textContent=!customers.length
+      ?"No end customers are available. Load source files in Workbook Summary first."
+      :!customer
+        ?`${customers.length} end customer${customers.length===1?"":"s"} available. Choose one to continue.`
+        :!family
+          ?`${families.length} membrane type${families.length===1?"":"s"} available for ${customer}. Choose one to continue.`
+          :sorted.length
+            ?`${sorted.length} ${noun}${sorted.length===1?"":"s"} available for ${customer} · ${family}.`
+            :`No complaint numbers are available for ${customer} · ${family}.`;
     $("searchResult").innerHTML="";
   } catch(err) {
     valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>`;
@@ -2631,10 +2674,12 @@ async function refreshSearchChoices() {
 }
 
 async function runQuickSearch() {
+  const customer=$("searchCustomer").value.trim();
+  const family=$("searchFamily").value.trim();
   const query=$("searchValue").value.trim();
-  if (!query) {
+  if (!customer || !family || !query) {
     $("searchStatus").className="status bad";
-    $("searchStatus").textContent=`Choose a ${$("searchType").value==="lot"?"lot":"complaint"} number.`;
+    $("searchStatus").textContent=!customer?"Choose an end customer.":!family?"Choose a membrane type.":"Choose a complaint number.";
     $("searchResult").innerHTML="";
     return;
   }
@@ -2642,12 +2687,10 @@ async function runQuickSearch() {
   $("searchStatus").textContent="Searching workbook and current extracted reports...";
   try {
     summaryDataset=await collectComplaintDataset();
-    const searchType=$("searchType").value;
-    const family=$("searchFamily").value;
     const matches=summaryDataset.filter(row=>{
+      if (!matchesSearchCustomer(row,customer)) return false;
       if (!matchesSearchFamily(row,family)) return false;
-      if (searchType==="complaintNo") return String(row.complaintNo||"").trim()===query;
-      return lotTokens(row.lot).some(lot=>lot===query);
+      return String(row.complaintNo||"").trim()===query;
     });
     $("searchStatus").className="status good";
     $("searchStatus").textContent=`Found ${matches.length} matching complaint${matches.length===1?"":"s"}.`;
@@ -2680,8 +2723,15 @@ function runDecisionSearch() {
 }
 
 $("searchBtn").onclick=runQuickSearch;
-$("searchType").addEventListener("change",refreshSearchChoices);
-$("searchFamily").addEventListener("change",refreshSearchChoices);
+$("searchCustomer").addEventListener("change",()=>{
+  $("searchFamily").value="";
+  $("searchValue").value="";
+  refreshSearchChoices();
+});
+$("searchFamily").addEventListener("change",()=>{
+  $("searchValue").value="";
+  refreshSearchChoices();
+});
 $("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
 $("decisionSearchBtn").onclick=runDecisionSearch;
 
