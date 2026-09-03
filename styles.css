@@ -44,6 +44,25 @@ button {
 .status { margin-top: 10px; color: #475569; font-size: 14px; }
 .status.good { color: #166534; }
 .status.bad { color: #b91c1c; }
+.review-filter {
+  margin-top:18px; padding:16px; border:1px solid #cfd9e6; border-radius:10px; background:#f8fafc;
+}
+.review-filter-head { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
+.review-filter-head h3 { margin:0 0 5px; color:#17365d; font-size:16px; }
+.group-select-label { display:flex; flex-direction:column; gap:5px; min-width:270px; color:#475569; font-size:13px; font-weight:700; }
+.group-select-label select { width:100%; }
+.review-filter-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin:10px 0 12px; }
+.review-filter-actions button { margin-left:0; }
+.source-detail-toggle { display:flex; align-items:center; gap:7px; color:#475569; font-size:14px; }
+.source-detail-toggle input { width:auto; min-width:0; padding:0; accent-color:#2f5597; }
+.review-column-options {
+  display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:9px 18px;
+  padding:13px; border:1px solid #dfe5ec; border-radius:9px; background:white;
+}
+.review-column-options label { display:flex; gap:8px; align-items:flex-start; font-size:14px; }
+.review-column-options input { width:auto; min-width:0; margin-top:2px; padding:0; accent-color:#2f5597; }
+.review-column-options label.unsupported { color:#94a3b8; }
+.review-column-options small { display:block; font-size:11px; margin-top:2px; }
 .record {
   border: 1px solid #dce3eb; border-radius: 10px; padding: 15px; margin-top: 12px;
 }
@@ -140,6 +159,7 @@ footer {
   .grid { grid-template-columns: repeat(2, minmax(150px,1fr)); }
   .summary-field-options { grid-template-columns:repeat(2,minmax(180px,1fr)); }
   .summary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .review-column-options { grid-template-columns:repeat(2,minmax(180px,1fr)); }
   header { align-items:flex-start; flex-direction:column; }
 }
 @media(max-width: 700px) {
@@ -147,9 +167,11 @@ footer {
   .app-tabs { width:100%; overflow-x:auto; }
   .app-tab-button { white-space:nowrap; flex:1; padding:9px 10px; }
   .panel-title-row, .record-head { flex-direction:column; align-items:stretch; }
+  .review-filter-head { flex-direction:column; }
+  .group-select-label { min-width:100%; width:100%; }
   .record-actions, .review-actions { flex-wrap:wrap; }
   .sheet-options { grid-template-columns:1fr; }
-  .summary-field-options, .summary-metrics { grid-template-columns:1fr; }
+  .summary-field-options, .summary-metrics, .review-column-options { grid-template-columns:1fr; }
   .overview-grid { grid-template-columns:1fr; }
   .summary-upload-row input[type=file], .search-controls input, .search-controls select { min-width:100%; width:100%; }
 }

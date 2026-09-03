@@ -55,6 +55,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - ZIP containing PDF/MSG
 - Add reports in later selections without replacing earlier extracted complaints
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
+- Choose a worksheet group and tick only the matching worksheet columns to display during report review
+- Unsupported worksheet columns are identified clearly while the complete extraction remains available for Excel export
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
 - Fold or show individual extracted complaint cards, with Fold all and Show all controls
 - Save reviewed results temporarily in the same browser and restore them after refresh

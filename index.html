@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=8" />
+  <link rel="stylesheet" href="./styles.css?v=9" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -32,6 +32,25 @@
       <p class="hint">Skip this step to create a brand-new Excel workbook. If selected, your workbook is read locally by your browser.</p>
       <input id="excelFile" type="file" accept=".xlsx" />
       <div id="excelStatus" class="status"></div>
+      <div class="review-filter" aria-labelledby="reviewFilterHeading">
+        <div class="review-filter-head">
+          <div>
+            <h3 id="reviewFilterHeading">Choose the information to display</h3>
+            <p class="hint">Choose a worksheet group, then tick only the worksheet columns you want to review. All extracted values are still kept for Excel export.</p>
+          </div>
+          <label class="group-select-label">Worksheet group
+            <select id="reviewSheetSelect" aria-label="Worksheet group"></select>
+          </label>
+        </div>
+        <div class="review-filter-actions">
+          <button id="reviewEssentialBtn" type="button" class="secondary">Essential fields</button>
+          <button id="reviewSelectAllBtn" type="button" class="secondary">Tick supported columns</button>
+          <button id="reviewClearAllBtn" type="button" class="secondary">Untick all</button>
+          <label class="source-detail-toggle"><input id="reviewSourceDetails" type="checkbox" /> Show source text and extraction notes</label>
+        </div>
+        <div id="reviewColumnOptions" class="review-column-options"></div>
+        <div id="reviewFilterStatus" class="status"></div>
+      </div>
     </section>
 
     <section class="panel">
@@ -46,7 +65,7 @@
       <div class="panel-title-row">
         <div>
           <h2>3. Review extracted information</h2>
-          <p class="hint">Review the summary, standardized symptoms, problem type, LFA relevance, decisions, and structured test evidence before updating Excel.</p>
+          <p class="hint">Only the fields ticked above are displayed. You can edit them before updating Excel.</p>
         </div>
         <div class="review-actions">
           <button id="saveDraftBtn" class="primary">Save temporarily</button>
@@ -198,6 +217,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=26"></script>
+  <script type="module" src="./app.js?v=27"></script>
 </body>
 </html>

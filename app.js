@@ -60,6 +60,53 @@ const SUMMARY_FIELDS = [
   {key:"sourceSheets",label:"Source Worksheet(s)"}
 ];
 
+const REVIEW_FIELD_DEFINITIONS = [
+  {key:"sourceGroup",label:"Source Group",aliases:["source group","category","workbook group"]},
+  {key:"complaintNo",label:"Complaint / Notification",essential:true,aliases:["complaint notification","complaint number","complaint no","complaint id","complaint ids","complaint id s","notification number","notification","complaint","complaint #"]},
+  {key:"complaintRegisteredDate",label:"Complaint Registered Date",aliases:["complaint registered date","registered date","registration date"]},
+  {key:"reportDate",label:"Report Date",aliases:["final report date","report date","date of sending final report to customer"]},
+  {key:"daysToReport",label:"Days",aliases:["days to report","elapsed days","days"]},
+  {key:"customerCompany",label:"End Customer",essential:true,aliases:["customer company","end customer","final customer","customer source label","customer source","customer"]},
+  {key:"rollsImplicated",label:"Rolls / Units Implicated",aliases:["rolls implicated","number of roll implicated","implicated units","units implicated"]},
+  {key:"samplesReceived",label:"Samples Received",aliases:["samples received","sample received","number of sample received"]},
+  {key:"sampleDetails",label:"Sample Details",aliases:["sample details","sample source","sample id"]},
+  {key:"lot",label:"Lot / Batch",essential:true,aliases:["lot s","lot number","lot no","product lot if available","batch number","batch no","batch","lot"]},
+  {key:"materialNo",label:"Material No.",aliases:["material no","material number","article no","article number"]},
+  {key:"productDescription",label:"Product Description",aliases:["product description","material number text","material text","item text"]},
+  {key:"productFamily",label:"Product Family",essential:true,aliases:["product family","product type","product"]},
+  {key:"membraneType",label:"Membrane Type",aliases:["membrane type"]},
+  {key:"zones",label:"Zone(s)",aliases:["zone s","zones","zone"]},
+  {key:"masterRolls",label:"Master Roll(s)",aliases:["master roll s","master rolls","master roll"]},
+  {key:"finalRolls",label:"Final Roll(s)",aliases:["final roll s","final rolls","final roll"]},
+  {key:"mrfrAreas",label:"MR-FR Area(s)",aliases:["mr fr area s","mr fr areas"]},
+  {key:"mrfrCombined",label:"MR-FR(s)",aliases:["mr fr s","mr frs","mr fr"]},
+  {key:"formalProblem",label:"Formal Issue Description",essential:true,aliases:["formal issue description","issue email statement","issue description","notification text","reported symptom","failure mode"]},
+  {key:"problem",label:"Problem / Reason",essential:true,aliases:["customer reported failure","reason problem","problem s","problems","problem","reason"]},
+  {key:"customerReportedFailure",label:"Customer Reported Failure",aliases:["customer reported failure"]},
+  {key:"standardizedSymptoms",label:"Standardized Symptom(s)",aliases:["standardized symptom s","standardized symptoms","complaint symptom","symptom"]},
+  {key:"problemTypes",label:"Problem Type",aliases:["problem type","failure family","defect classification","defect l1 defect classification for failure description","defect l2 defect classification for failure description"]},
+  {key:"lfaRelevance",label:"LFA Relevance",aliases:["lfa relevance"]},
+  {key:"assaysApplied",label:"Tests / Assays Applied",essential:true,aliases:["tests assays applied","tests performed","test performed","test evidence","standard test","assays applied","assay","test"]},
+  {key:"resultStatus",label:"Result / Status",essential:true,aliases:["result status","final result status","claim decision","complaint status","workbook status","result","status"]},
+  {key:"criticality",label:"Criticality",aliases:["criticality"]},
+  {key:"failureReproduced",label:"Failure Reproduced?",aliases:["failure reproduced"]},
+  {key:"rootCauseRelated",label:"Root Cause in Process?",aliases:["root cause in process","root cause related"]},
+  {key:"coordinator",label:"Coordinator",aliases:["coordinator","written by"]},
+  {key:"similarEvents",label:"Similar Events Same Category?",aliases:["similar events same category","similar events"]},
+  {key:"containmentNecessary",label:"Containment Necessary?",aliases:["containment necessary","containment"]},
+  {key:"correctiveActionNecessary",label:"Corrective / Preventive Action Necessary?",aliases:["corrective preventive action necessary","corrective action necessary"]},
+  {key:"rootCauseConclusion",label:"Conclusion of Root Cause Analysis",aliases:["conclusion of root cause analysis","root cause analysis conclusion"]},
+  {key:"problemValidation",label:"Problem Description Check",aliases:["problem description check"]},
+  {key:"finalAssessment",label:"Final Assessment",aliases:["detailed final assessment","final assessment root cause","final assessment","historical note"]},
+  {key:"finalScope",label:"Final Scope / Decision",aliases:["final scope decision","final decision","scope decision"]},
+  {key:"warnings",label:"Data Quality / Notes",aliases:["data quality notes","notes"]},
+  {key:"sourceFile",label:"Source File",aliases:["source file","email subject identifier","source"]}
+];
+
+const DEFAULT_REVIEW_COLUMNS = REVIEW_FIELD_DEFINITIONS
+  .map((item,index)=>({id:`default-${index}`,header:item.label,field:item.key,supported:true,essential:Boolean(item.essential)}));
+const DEFAULT_REVIEW_PROFILE = {name:"Default report view",headerRow:-1,columns:DEFAULT_REVIEW_COLUMNS,isDefault:true};
+
 const GENERIC_TEST_RULES = [
   {name:"Visual inspection",re:/\bvisual\s+inspection\b/i,purpose:"Appearance / physical defect review",method:"Inspect customer, retain or reference material and available photographs."},
   {name:"Batch record review",re:/\b(?:batch|manufacturing|production)\s+(?:record|documentation)\s+review\b|\breview\s+of\s+(?:the\s+)?(?:batch|manufacturing|production)\s+(?:record|documentation)/i,purpose:"Manufacturing history review",method:"Review production, release and in-process records for deviations or relevant trends."},
@@ -80,6 +127,9 @@ let lastPreservedSheetNames = [];
 let summaryDataset = [];
 let summarySources = [];
 let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
+let reviewProfiles = [DEFAULT_REVIEW_PROFILE];
+let activeReviewProfileName = DEFAULT_REVIEW_PROFILE.name;
+const reviewSelections = new Map([[DEFAULT_REVIEW_PROFILE.name,new Set(DEFAULT_REVIEW_COLUMNS.filter(column=>column.essential).map(column=>column.id))]]);
 const collapsedRecords = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -868,6 +918,11 @@ async function expandFiles(fileList) {
 
 function recordCard(r, index) {
   const collapsed=collapsedRecords.has(recordUiKey(r));
+  const visibleFields=activeReviewLabels();
+  const summaryParts=[];
+  if (visibleFields.has("complaintNo") && r.complaintNo) summaryParts.push(r.complaintNo);
+  if (visibleFields.has("lot") && r.lot) summaryParts.push(`Lot ${r.lot}`);
+  const showSourceDetails=Boolean($("reviewSourceDetails")?.checked);
   const groupOptions = CATEGORY_SHEETS.map(x =>
     `<option ${x===r.sourceGroup?"selected":""}>${x}</option>`).join("");
   const famOptions = ["","CN95","CN140ub","CN140","CN110","CN180"].map(x =>
@@ -877,7 +932,7 @@ function recordCard(r, index) {
     <div class="record-head">
       <div>
         <div class="record-title">${esc(r.sourceFile)}</div>
-        <div class="record-summary">${esc([r.complaintNo,r.lot?`Lot ${r.lot}`:""].filter(Boolean).join(" · "))}</div>
+        <div class="record-summary">${esc(summaryParts.join(" · "))}</div>
       </div>
       <div class="record-actions">
         <button class="secondary toggle-record" data-index="${index}" aria-expanded="${collapsed?"false":"true"}">${collapsed?"Show details":"Fold"}</button>
@@ -925,9 +980,9 @@ function recordCard(r, index) {
       ${textarea("finalAssessment","Final Assessment",r.finalAssessment,"wide")}
       ${textarea("finalScope","Final Scope / Decision",r.finalScope,"wide")}
     </div>
-    ${testEvidenceTable(r.testEvidence)}
-    ${r.warnings ? `<div class="warning">${esc(r.warnings)}</div>` : ""}
-    <details><summary>Raw extracted text</summary><pre>${esc(r.rawText)}</pre></details>
+    ${visibleFields.has("assaysApplied")?testEvidenceTable(r.testEvidence):""}
+    ${showSourceDetails && r.warnings ? `<div class="warning">${esc(r.warnings)}</div>` : ""}
+    ${showSourceDetails?`<details><summary>Raw extracted text</summary><pre>${esc(r.rawText)}</pre></details>`:""}
     </div>
   </div>`;
 }
@@ -943,13 +998,16 @@ function testEvidenceTable(tests=[]) {
   </tr>`).join("")}</tbody></table></div></div>`;
 }
 function field(name,label,value="",cls="") {
-  return `<div class="field ${cls}"><label>${label}</label><input data-field="${name}" value="${esc(value)}"></div>`;
+  const presentation=reviewFieldPresentation(name,label);
+  return `<div class="field ${cls}" data-review-field="${name}"${presentation.visible?"":" hidden"}><label>${esc(presentation.label)}</label><input data-field="${name}" value="${esc(value)}"></div>`;
 }
 function textarea(name,label,value="",cls="") {
-  return `<div class="field ${cls}"><label>${label}</label><textarea data-field="${name}">${esc(value)}</textarea></div>`;
+  const presentation=reviewFieldPresentation(name,label);
+  return `<div class="field ${cls}" data-review-field="${name}"${presentation.visible?"":" hidden"}><label>${esc(presentation.label)}</label><textarea data-field="${name}">${esc(value)}</textarea></div>`;
 }
 function fieldSelect(name,label,options,cls="") {
-  return `<div class="field ${cls}"><label>${label}</label><select data-field="${name}">${options}</select></div>`;
+  const presentation=reviewFieldPresentation(name,label);
+  return `<div class="field ${cls}" data-review-field="${name}"${presentation.visible?"":" hidden"}><label>${esc(presentation.label)}</label><select data-field="${name}">${options}</select></div>`;
 }
 
 function currentLotRows() {
@@ -1245,6 +1303,163 @@ function detectComplaintHeaderRow(matrix) {
     if (score>best.score) best={index,score};
   });
   return best.score>=2?best.index:-1;
+}
+
+function reviewDefinitionForHeader(header) {
+  const normalized=normalizeHeader(header);
+  if (!normalized) return null;
+  let best=null;
+  for (const definition of REVIEW_FIELD_DEFINITIONS) {
+    if (definition.key==="rootCauseRelated" && normalized.startsWith("root cause in ")) best={definition,score:90};
+    for (const alias of definition.aliases) {
+      const normalizedAlias=normalizeHeader(alias);
+      let score=0;
+      if (normalized===normalizedAlias) score=100;
+      else if (normalizedAlias.length>=6 && normalized.endsWith(` ${normalizedAlias}`)) score=80;
+      else if (normalizedAlias.length>=8 && normalized.startsWith(`${normalizedAlias} `)) score=70;
+      if (score>(best?.score||0)) best={definition,score};
+    }
+  }
+  return best?.definition||null;
+}
+
+function detectReviewHeaderRow(matrix) {
+  let best={index:-1,mapped:0,filled:0};
+  matrix.slice(0,12).forEach((row,index)=>{
+    const headers=(row||[]).map(displayCellValue).filter(Boolean);
+    const mapped=new Set(headers.map(header=>reviewDefinitionForHeader(header)?.key).filter(Boolean)).size;
+    if (mapped>best.mapped || (mapped===best.mapped && headers.length>best.filled)) {
+      best={index,mapped,filled:headers.length};
+    }
+  });
+  return best.index;
+}
+
+function reviewProfileFromMatrix(name,matrix) {
+  const headerRow=detectReviewHeaderRow(matrix);
+  const headers=headerRow>=0?(matrix[headerRow]||[]):[];
+  const columns=[];
+  const seenColumns=new Set();
+  headers.forEach((value,index)=>{
+    const originalHeader=displayCellValue(value);
+    if (!originalHeader) return;
+    const definition=reviewDefinitionForHeader(originalHeader);
+    const signature=`${normalizeHeader(originalHeader)}|${definition?.key||""}`;
+    if (seenColumns.has(signature)) return;
+    seenColumns.add(signature);
+    const header=definition?.key==="rootCauseRelated"?definition.label:originalHeader;
+    columns.push({
+      id:`${name}-${headerRow}-${index}`,
+      header,
+      field:definition?.key||"",
+      supported:Boolean(definition),
+      essential:Boolean(definition?.essential)
+    });
+  });
+  return {name,headerRow,columns,isDefault:false};
+}
+
+function reviewProfilesFromWorkbook(workbook) {
+  return workbook.worksheets.map(worksheet=>reviewProfileFromMatrix(worksheet.name,worksheetMatrix(worksheet)));
+}
+
+function reviewProfilesFromReferenceSheets(sheets) {
+  return Object.entries(sheets).map(([name,rows])=>{
+    const matrix=[];
+    for (let index=0;index<rows.length;index++) matrix.push(rows[index]||[]);
+    return reviewProfileFromMatrix(name,matrix);
+  });
+}
+
+function choosePreferredReviewProfile(profiles) {
+  const preferred=["Complaint Information","Combined Overview","Complaint Summary","Final Reports","CN95"];
+  for (const name of preferred) {
+    const profile=profiles.find(item=>item.name.toLowerCase()===name.toLowerCase() && item.columns.some(column=>column.supported));
+    if (profile) return profile.name;
+  }
+  return profiles
+    .filter(profile=>!profile.isDefault)
+    .sort((a,b)=>b.columns.filter(column=>column.supported).length-a.columns.filter(column=>column.supported).length)[0]?.name
+    || DEFAULT_REVIEW_PROFILE.name;
+}
+
+function setReviewProfiles(profiles=[]) {
+  reviewProfiles=[DEFAULT_REVIEW_PROFILE,...profiles];
+  reviewSelections.clear();
+  for (const profile of reviewProfiles) {
+    reviewSelections.set(profile.name,new Set(profile.columns.filter(column=>column.supported && (!profile.isDefault || column.essential)).map(column=>column.id)));
+  }
+  activeReviewProfileName=choosePreferredReviewProfile(reviewProfiles);
+  renderReviewControls();
+  renderRecords();
+}
+
+function currentReviewProfile() {
+  return reviewProfiles.find(profile=>profile.name===activeReviewProfileName)||DEFAULT_REVIEW_PROFILE;
+}
+
+function activeReviewLabels() {
+  const profile=currentReviewProfile();
+  const selected=reviewSelections.get(profile.name)||new Set();
+  const labels=new Map();
+  for (const column of profile.columns) {
+    if (column.supported && selected.has(column.id) && !labels.has(column.field)) labels.set(column.field,column.header);
+  }
+  return labels;
+}
+
+function renderReviewControls() {
+  const select=$("reviewSheetSelect");
+  if (!select) return;
+  select.innerHTML=reviewProfiles.map(profile=>`<option value="${esc(profile.name)}"${profile.name===activeReviewProfileName?" selected":""}>${esc(profile.name)}</option>`).join("");
+  renderReviewColumnOptions();
+}
+
+function renderReviewColumnOptions() {
+  const profile=currentReviewProfile();
+  const selected=reviewSelections.get(profile.name)||new Set();
+  const target=$("reviewColumnOptions");
+  if (!target) return;
+  target.innerHTML=profile.columns.length
+    ? profile.columns.map(column=>column.supported
+      ? `<label><input type="checkbox" data-review-column="${esc(column.id)}"${selected.has(column.id)?" checked":""} /> <span>${esc(column.header)}</span></label>`
+      : `<label class="unsupported"><input type="checkbox" disabled /> <span>${esc(column.header)}<small>Not available from report</small></span></label>`
+    ).join("")
+    : `<p class="hint">No column header row could be identified in this worksheet.</p>`;
+  const supported=profile.columns.filter(column=>column.supported).length;
+  const unsupported=profile.columns.length-supported;
+  $("reviewFilterStatus").className=supported?"status good":"status";
+  $("reviewFilterStatus").textContent=profile.isDefault
+    ? "No Excel group is required. This compact default view can be changed with the tick boxes."
+    : `${profile.name}: ${supported} worksheet column${supported===1?"":"s"} matched to report fields${unsupported?`; ${unsupported} worksheet column${unsupported===1?" is":"s are"} not available directly from the report`:""}.`;
+  target.querySelectorAll("[data-review-column]").forEach(input=>{
+    input.addEventListener("change",()=>{
+      const next=reviewSelections.get(profile.name)||new Set();
+      if (input.checked) next.add(input.dataset.reviewColumn);
+      else next.delete(input.dataset.reviewColumn);
+      reviewSelections.set(profile.name,next);
+      syncRecordsFromDom();
+      renderRecords();
+    });
+  });
+}
+
+function updateReviewSelection(mode) {
+  const profile=currentReviewProfile();
+  const next=new Set();
+  for (const column of profile.columns) {
+    if (!column.supported) continue;
+    if (mode==="all" || (mode==="essential" && column.essential)) next.add(column.id);
+  }
+  reviewSelections.set(profile.name,next);
+  renderReviewColumnOptions();
+  syncRecordsFromDom();
+  renderRecords();
+}
+
+function reviewFieldPresentation(name,defaultLabel) {
+  const labels=activeReviewLabels();
+  return {visible:labels.has(name),label:labels.get(name)||defaultLabel};
 }
 
 function objectsFromMatrix(matrix, headerIndex) {
@@ -2033,6 +2248,7 @@ async function handleWorkbookSelection(file) {
   try {
     const wb=await loadWorkbook(workbookBuffer.slice(0));
     workbookMode="standard";
+    setReviewProfiles(reviewProfilesFromWorkbook(wb));
     for (const id of ["excelStatus","summaryExcelStatus"]) {
       $(id).className="status good";
       $(id).textContent=`Loaded ${file.name} (${wb.worksheets.length} sheets).`;
@@ -2040,6 +2256,8 @@ async function handleWorkbookSelection(file) {
   } catch(err) {
     if (await isValidXlsxContainer(workbookBuffer)) {
       workbookMode="reference-readonly";
+      const sheets=await readReferenceWorkbook(workbookBuffer.slice(0));
+      setReviewProfiles(reviewProfilesFromReferenceSheets(sheets));
       for (const id of ["excelStatus","summaryExcelStatus"]) {
         $(id).className="status good";
         $(id).textContent=`Loaded ${file.name} as a protected reference. The app will read it locally and leave the original unchanged.`;
@@ -2047,6 +2265,7 @@ async function handleWorkbookSelection(file) {
     } else {
       workbookBuffer=null;
       workbookFileName="";
+      setReviewProfiles([]);
       for (const id of ["excelStatus","summaryExcelStatus"]) {
         $(id).className="status bad";
         $(id).textContent=`Could not read workbook: ${err.message}`;
@@ -2056,6 +2275,7 @@ async function handleWorkbookSelection(file) {
 }
 
 $("excelFile").addEventListener("change", async e=>{
+  syncRecordsFromDom();
   await handleWorkbookSelection(e.target.files?.[0]);
 });
 
@@ -2433,7 +2653,22 @@ $("searchFamily").addEventListener("change",refreshSearchChoices);
 $("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
 $("decisionSearchBtn").onclick=runDecisionSearch;
 
+$("reviewSheetSelect").addEventListener("change",event=>{
+  syncRecordsFromDom();
+  activeReviewProfileName=event.target.value;
+  renderReviewColumnOptions();
+  renderRecords();
+});
+$("reviewEssentialBtn").onclick=()=>updateReviewSelection("essential");
+$("reviewSelectAllBtn").onclick=()=>updateReviewSelection("all");
+$("reviewClearAllBtn").onclick=()=>updateReviewSelection("none");
+$("reviewSourceDetails").addEventListener("change",()=>{
+  syncRecordsFromDom();
+  renderRecords();
+});
+
 renderSummaryFieldOptions();
+renderReviewControls();
 renderRecords();
 restoreTemporaryDraft();
 
@@ -2452,6 +2687,10 @@ window.__reportExtractionDebug = {
   getLastPreservedSheetNames: () => [...lastPreservedSheetNames],
   getSummaryDataset: () => summaryDataset.map(row=>structuredClone(row)),
   getSummarySources: () => summarySources.map(source=>({name:source.name,kind:source.kind,recordCount:source.records?.length||0,errorCount:source.errors?.length||0})),
+  getReviewProfile: () => ({
+    name:currentReviewProfile().name,
+    columns:currentReviewProfile().columns.map(column=>({...column,selected:(reviewSelections.get(currentReviewProfile().name)||new Set()).has(column.id)}))
+  }),
   collectComplaintDataset,
   parseRecord
 };
