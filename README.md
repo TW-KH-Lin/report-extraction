@@ -55,11 +55,11 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - ZIP containing PDF/MSG
 - Add reports in later selections without replacing earlier extracted complaints
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
-- Choose a built-in worksheet group immediately, or upload Excel to use its exact worksheet names and headers
-- Tick only the matching worksheet columns to display during report review
-- Unsupported worksheet columns are identified clearly while the complete extraction remains available for Excel export
+- Review every extracted complaint as one complete row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
+- Structured Test Evidence appears as a separate one-test-per-row table, with test methods formatted as bullet points
+- Dates in the organized overview use year-month-day format
+- Export the three organized review tabs to separate Excel worksheets
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
-- Fold or show individual extracted complaint cards, with Fold all and Show all controls
 - Save reviewed results temporarily in the same browser and restore them after refresh
 - Review a live lot summary table before export
 - Choose individual app-managed worksheets to include in the Excel download
@@ -73,6 +73,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Additional linked Quick Search in the order: end customer, membrane type, complaint number
 - Quick Search complaint-number choices show the associated end-customer name beside each number
 - Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
+- Built-in, read-only Master–Final Roll Plan reference with a worksheet dropdown, 50 master-roll rows, final-roll positions and colored zones
 - Workbook summary and search also include reports currently extracted in the browser
 - Complaint number
 - Complaint registered date, report date and elapsed days

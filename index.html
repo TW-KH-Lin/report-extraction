@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=9" />
+  <link rel="stylesheet" href="./styles.css?v=11" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -24,6 +24,7 @@
       <button type="button" class="app-tab-button active" data-app-tab="extractView">Extract &amp; Export</button>
       <button type="button" class="app-tab-button" data-app-tab="summaryView">Workbook Summary</button>
       <button type="button" class="app-tab-button" data-app-tab="searchView">Quick Search</button>
+      <button type="button" class="app-tab-button" data-app-tab="rollPlanView">Master–Final Roll Plan</button>
     </nav>
 
     <div id="extractView" class="app-view">
@@ -42,39 +43,22 @@
       <div id="extractStatus" class="status"></div>
     </section>
 
-    <section class="panel" aria-labelledby="reviewFilterHeading">
-      <div class="review-filter-head">
-        <div>
-          <h2 id="reviewFilterHeading">3. Choose the information to display</h2>
-          <p class="hint">Built-in groups are available immediately. Upload Excel to load its exact worksheet names and columns, then tick only what you want to review. All extracted values are still kept for export.</p>
-        </div>
-        <label class="group-select-label">Worksheet group
-          <select id="reviewSheetSelect" aria-label="Worksheet group"></select>
-        </label>
-      </div>
-      <div class="review-filter-actions">
-        <button id="reviewEssentialBtn" type="button" class="secondary">Essential fields</button>
-        <button id="reviewSelectAllBtn" type="button" class="secondary">Tick supported columns</button>
-        <button id="reviewClearAllBtn" type="button" class="secondary">Untick all</button>
-        <label class="source-detail-toggle"><input id="reviewSourceDetails" type="checkbox" /> Show source text and extraction notes</label>
-      </div>
-      <div id="reviewColumnOptions" class="review-column-options"></div>
-      <div id="reviewFilterStatus" class="status"></div>
-    </section>
-
     <section class="panel">
       <div class="panel-title-row">
         <div>
-          <h2>4. Review extracted information</h2>
-          <p class="hint">Only the fields ticked above are displayed. You can edit them before updating Excel.</p>
+          <h2>3. Review extracted information</h2>
+          <p class="hint">Each complaint occupies one complete row. Use the three tabs to move from case overview to investigation details and test evidence.</p>
         </div>
         <div class="review-actions">
           <button id="saveDraftBtn" class="primary">Save temporarily</button>
-          <button id="foldAllBtn" class="secondary">Fold all</button>
-          <button id="unfoldAllBtn" class="secondary">Show all</button>
           <button id="clearBtn" class="secondary">Clear extracted rows</button>
         </div>
       </div>
+      <nav class="review-tabs" aria-label="Extracted information groups">
+        <button type="button" class="review-tab-button active" data-review-tab="overview">1. Complaint overview</button>
+        <button type="button" class="review-tab-button" data-review-tab="investigation">2. Complaint investigation</button>
+        <button type="button" class="review-tab-button" data-review-tab="evidence">3. Tests &amp; root cause</button>
+      </nav>
       <div id="draftStatus" class="status"></div>
       <div id="records"></div>
       <div class="lots-section">
@@ -85,7 +69,7 @@
     </section>
 
     <section class="panel">
-      <h2>5. Check existing lot history</h2>
+      <h2>4. Check existing lot history</h2>
       <p class="hint">Counts unique complaints from the same lot and shows how often each symptom theme was reported.</p>
       <div class="history-controls">
         <input id="historyLot" placeholder="Lot number" />
@@ -95,11 +79,12 @@
     </section>
 
     <section class="panel">
-      <h2>6. Create or update Excel</h2>
+      <h2>5. Create or update Excel</h2>
       <p class="hint">
         One complaint number remains one row. Multiple MR / FR values remain together in one cell.
         Without an uploaded workbook, a new Excel file is created. Product-family sheets are rebuilt from all three categories,
-        detailed assays are written to Extracted Test Evidence, and lot/symptom counts are written to Lot &amp; Symptom Summary.
+        the three organized review tabs are written to separate worksheets, detailed assays are written to Extracted Test Evidence,
+        and lot/symptom counts are written to Lot &amp; Symptom Summary.
       </p>
       <fieldset class="sheet-selection">
         <legend>Sheets to export</legend>
@@ -110,6 +95,9 @@
           <label><input type="checkbox" data-export-sheet value="Extracted Test Evidence" checked /> Extracted Test Evidence</label>
           <label><input type="checkbox" data-export-sheet value="Complaint Summary" checked /> Complaint Summary</label>
           <label><input type="checkbox" data-export-sheet value="Lot &amp; Symptom Summary" checked /> Lot &amp; Symptom Summary</label>
+          <label><input type="checkbox" data-export-sheet value="Complaint Overview" checked /> Complaint Overview</label>
+          <label><input type="checkbox" data-export-sheet value="Complaint Investigation" checked /> Complaint Investigation</label>
+          <label><input type="checkbox" data-export-sheet value="Tests &amp; Root Cause" checked /> Tests &amp; Root Cause</label>
           <label><input type="checkbox" data-export-sheet value="CN95" checked /> CN95</label>
           <label><input type="checkbox" data-export-sheet value="CN140ub" checked /> CN140ub</label>
           <label><input type="checkbox" data-export-sheet value="CN140" checked /> CN140</label>
@@ -226,6 +214,28 @@
         </div>
       </section>
     </div>
+
+    <div id="rollPlanView" class="app-view" hidden>
+      <section class="panel">
+        <h2>Master–Final Roll Plan</h2>
+        <p class="hint">Choose a plan worksheet to view a built-in, read-only reference layout. The supplied workbook and its production data are not included in this website.</p>
+        <div class="roll-plan-controls">
+          <label>Worksheet
+            <select id="rollPlanSheet" aria-label="Master–Final Roll Plan worksheet"></select>
+          </label>
+        </div>
+        <div id="rollPlanStatus" class="status"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-title-row">
+          <div>
+            <h2 id="rollPlanHeading">Plan worksheet</h2>
+            <p class="hint">Scroll horizontally and vertically to see the full plan. Row and column references remain visible.</p>
+          </div>
+        </div>
+        <div id="rollPlanTable" class="roll-plan-table-wrap"></div>
+      </section>
+    </div>
   </main>
 
   <footer>
@@ -237,6 +247,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=31"></script>
+  <script type="module" src="./app.js?v=34"></script>
 </body>
 </html>

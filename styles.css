@@ -24,6 +24,12 @@ main { max-width: 1500px; margin: 24px auto 50px; padding: 0 22px; }
 .app-tab-button { margin:0; background:transparent; color:#40536b; }
 .app-tab-button.active { background:#17365d; color:white; box-shadow:0 2px 5px rgba(23,54,93,.18); }
 .app-view[hidden] { display:none; }
+.review-tabs {
+  display:flex; gap:8px; margin:16px 0 10px; padding:5px; max-width:100%; overflow-x:auto;
+  background:#f0f4f8; border:1px solid #d7e0ea; border-radius:10px;
+}
+.review-tab-button { margin:0; white-space:nowrap; background:transparent; color:#40536b; }
+.review-tab-button.active { background:#2f5597; color:white; box-shadow:0 2px 5px rgba(47,85,151,.18); }
 .panel {
   background: white; border: 1px solid #dfe5ec; border-radius: 12px;
   padding: 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20,40,80,.04);
@@ -141,6 +147,48 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .test-evidence h3 { margin: 0 0 8px; color:#17365d; font-size:15px; }
 .table-scroll { overflow-x:auto; }
 .test-evidence table { min-width: 980px; }
+.organized-review-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin:12px 0 6px; color:#17365d; }
+.organized-review-heading span { color:#64748b; font-size:13px; }
+.organized-review-scroll { border:1px solid #dfe5ec; border-radius:9px; }
+.organized-review-table { margin-top:0; min-width:1550px; }
+.organized-review-table th { white-space:nowrap; }
+.organized-review-table td { padding:6px; }
+.organized-review-table input, .organized-review-table select, .organized-review-table textarea { width:100%; min-width:140px; }
+.organized-review-table textarea { min-width:360px; min-height:118px; resize:vertical; }
+.organized-review-table .wide-column input { min-width:260px; }
+.organized-review-table .evidence-column { min-width:540px; }
+.structured-evidence-text { max-height:240px; overflow:auto; white-space:normal; line-height:1.45; color:#334155; }
+.structured-evidence-section { margin-top:22px; padding-top:16px; border-top:1px solid #dfe5ec; }
+.structured-evidence-table { min-width:1900px; margin-top:0; }
+.structured-evidence-table td { max-width:420px; white-space:normal; line-height:1.4; }
+.test-method-list { margin:0; padding-left:18px; }
+.test-method-list li + li { margin-top:5px; }
+.organized-action { width:1%; white-space:nowrap; }
+.organized-action button { margin:0; }
+.roll-plan-controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+.roll-plan-controls label { display:flex; flex-direction:column; gap:5px; min-width:240px; color:#475569; font-size:13px; font-weight:700; }
+.roll-plan-guide { max-width:760px; }
+.roll-plan-guide h3 { margin:0 0 10px; color:#17365d; }
+.roll-plan-meta { display:flex; flex-wrap:wrap; gap:9px; margin:8px 0 12px; }
+.roll-plan-meta span { display:flex; flex-direction:column; gap:2px; min-width:130px; padding:9px 11px; border:1px solid #dfe5ec; border-radius:8px; background:#f8fafc; }
+.roll-plan-meta strong { color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+.roll-plan-grid-scroll { max-height:70vh; overflow:auto; border:1px solid #cfd9e6; border-radius:9px; }
+.roll-plan-table { width:max-content; min-width:100%; margin:0; table-layout:fixed; }
+.roll-plan-table th, .roll-plan-table td { min-width:34px; width:34px; height:27px; padding:3px; text-align:center; white-space:nowrap; }
+.roll-plan-table thead tr:first-child th { top:0; z-index:5; height:30px; }
+.roll-plan-table thead tr:nth-child(2) th { top:30px; z-index:5; }
+.roll-plan-table .plan-master { position:sticky; left:0; min-width:118px; width:118px; z-index:6; background:#17365d; color:white; }
+.roll-plan-table .plan-sticky-corner { z-index:7; }
+.roll-plan-table .plan-zone { color:#17365d; font-size:11px; font-weight:800; border-bottom:1px solid #9fb0c2; }
+.roll-plan-table .plan-slot { color:#17365d; font-weight:750; }
+.roll-plan-table .plan-position { background:#fff; }
+.roll-plan-table .zone-1, .roll-plan-table td.zone-1 { background:#eef6ff; }
+.roll-plan-table .zone-2, .roll-plan-table td.zone-2 { background:#fff7e8; }
+.roll-plan-table .zone-3, .roll-plan-table td.zone-3 { background:#eef9f1; }
+.roll-plan-table .zone-4, .roll-plan-table td.zone-4 { background:#f8f1fb; }
+.roll-plan-table .zone-5, .roll-plan-table td.zone-5 { background:#fef2f2; }
+.roll-plan-table .zone-6, .roll-plan-table td.zone-6 { background:#f0fdfa; }
+.roll-plan-table td.plan-position:hover { background:#dbeafe; outline:2px solid #2f5597; outline-offset:-2px; }
 .history-controls { display:flex; gap:8px; align-items:center; }
 .history-controls input { width:240px; }
 .history-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
@@ -166,6 +214,7 @@ footer {
   main { padding:0 12px; margin-top:14px; }
   .app-tabs { width:100%; overflow-x:auto; }
   .app-tab-button { white-space:nowrap; flex:1; padding:9px 10px; }
+  .review-tabs { width:100%; }
   .panel-title-row, .record-head { flex-direction:column; align-items:stretch; }
   .review-filter-head { flex-direction:column; }
   .group-select-label { min-width:100%; width:100%; }

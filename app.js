@@ -23,6 +23,9 @@ const FAMILY_HEADERS = ["Source Group", ...CATEGORY_HEADERS];
 const EVIDENCE_SHEET = "Extracted Test Evidence";
 const COMPLAINT_SUMMARY_SHEET = "Complaint Summary";
 const SUMMARY_SHEET = "Lot & Symptom Summary";
+const REVIEW_OVERVIEW_SHEET = "Complaint Overview";
+const REVIEW_INVESTIGATION_SHEET = "Complaint Investigation";
+const REVIEW_ROOT_CAUSE_SHEET = "Tests & Root Cause";
 const EVIDENCE_HEADERS = [
   "Complaint / Notification","Lot","Material No.","Product Family","Units Implicated","Samples Received",
   "Problem","Customer Reported Failure","Complaint Status","Sample Source","Sample ID","Standard Test",
@@ -36,7 +39,22 @@ const COMPLAINT_SUMMARY_HEADERS = [
   "Final Result / Status","Rolls Implicated","Samples Received","MR-FR(s)",
   "Registered Date","Report Date","Days","Data Quality / Notes","Source Group"
 ];
-const MANAGED_SHEETS = [...CATEGORY_SHEETS,EVIDENCE_SHEET,COMPLAINT_SUMMARY_SHEET,SUMMARY_SHEET,...FAMILY_SHEETS];
+const REVIEW_OVERVIEW_HEADERS = [
+  "Source Group","Complaint Number","Lot Number","End Customer","Final Result / Status",
+  "Standardized Symptom(s)","Date Registered","Report Date","Days","Membrane Type","Material No."
+];
+const REVIEW_INVESTIGATION_HEADERS = [
+  "Complaint Number","Lot Number","End Customer","Standardized Symptom(s)","Customer Reported Failure",
+  "Tests Performed","MR-FR Area(s)","Rolls Implicated","Samples Received"
+];
+const REVIEW_ROOT_CAUSE_HEADERS = [
+  "Complaint Number","Lot Number","End Customer","Standard Test","Sample Source","Sample ID","Purpose","Method",
+  "Result","Outcome","Within Spec?","Issue Observed?","Source Page","Conditions","Conclusion of Root Cause Analysis"
+];
+const MANAGED_SHEETS = [
+  ...CATEGORY_SHEETS,EVIDENCE_SHEET,COMPLAINT_SUMMARY_SHEET,SUMMARY_SHEET,
+  REVIEW_OVERVIEW_SHEET,REVIEW_INVESTIGATION_SHEET,REVIEW_ROOT_CAUSE_SHEET,...FAMILY_SHEETS
+];
 const DRAFT_DB_NAME = "report-extraction-private-drafts";
 const DRAFT_STORE = "drafts";
 const DRAFT_KEY = "current-results";
@@ -155,6 +173,7 @@ let lastPreservedSheetNames = [];
 let summaryDataset = [];
 let summarySources = [];
 let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
+let activeReviewTab = "overview";
 let reviewProfiles = [DEFAULT_REVIEW_PROFILE,...BUILT_IN_REVIEW_PROFILES];
 let activeReviewProfileName = DEFAULT_REVIEW_PROFILE.name;
 const reviewSelections = new Map(reviewProfiles.map(profile=>[
@@ -267,6 +286,12 @@ function parseFlexibleDate(value="") {
 function daysBetweenDates(start,end) {
   const a=parseFlexibleDate(start), b=parseFlexibleDate(end);
   return a&&b?Math.round((b-a)/86400000):"";
+}
+
+function isoDate(value="") {
+  const date=value instanceof Date?value:parseFlexibleDate(value);
+  if (!date || Number.isNaN(date.getTime())) return String(value||"").trim();
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}-${String(date.getUTCDate()).padStart(2,"0")}`;
 }
 
 function normalizeExtractedDate(value="") {
@@ -1066,12 +1091,111 @@ function renderLotsTable() {
     : `<p class="hint">No extracted lots yet.</p>`;
 }
 
+const ORGANIZED_REVIEW_TABS = {
+  overview:{
+    label:"Complaint overview",
+    fields:[
+      ["sourceGroup","Source Group","select"],["complaintNo","Complaint Number"],["lot","Lot Number"],
+      ["customerCompany","End Customer","wide"],["resultStatus","Final Result / Status"],
+      ["standardizedSymptoms","Standardized Symptom(s)","wide"],["complaintRegisteredDate","Date Registered","date"],
+      ["reportDate","Report Date","date"],["daysToReport","Days"],["membraneType","Membrane Type"],["materialNo","Material No."]
+    ]
+  },
+  investigation:{
+    label:"Complaint investigation",
+    fields:[
+      ["complaintNo","Complaint Number"],["lot","Lot Number"],["customerCompany","End Customer","wide"],
+      ["standardizedSymptoms","Standardized Symptom(s)","wide"],["customerReportedFailure","Customer Reported Failure","long"],
+      ["assaysApplied","Tests Performed","long"],["mrfrAreas","MR-FR Area(s)","wide"],
+      ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"]
+    ]
+  },
+  evidence:{
+    label:"Tests & root cause",
+    fields:[
+      ["complaintNo","Complaint Number"],["lot","Lot Number"],["customerCompany","End Customer","wide"],
+      ["rootCauseConclusion","Conclusion of Root Cause Analysis","long"]
+    ]
+  }
+};
+
+function structuredTestEvidenceText(record) {
+  const tests=record.testEvidence||[];
+  if (!tests.length) return record.assaysApplied?`Tests performed: ${record.assaysApplied}`:"No structured test evidence extracted.";
+  return tests.map((test,index)=>{
+    const parts=[
+      test.sampleSource&&`Sample: ${test.sampleSource}${test.sampleId?` (${test.sampleId})`:""}`,
+      test.purpose&&`Purpose: ${test.purpose}`,
+      test.method&&`Method: ${test.method}`,
+      test.result&&`Result: ${test.result}`,
+      test.outcome&&`Outcome: ${test.outcome}`,
+      test.withinSpec&&`Within spec: ${test.withinSpec}`,
+      test.issueObserved&&`Issue observed: ${test.issueObserved}`,
+      test.sourcePage&&`Source: ${test.sourcePage}`,
+      test.conditions&&`Conditions: ${test.conditions}`
+    ].filter(Boolean);
+    return `${index+1}. ${test.name||"Test"}${parts.length?`\n${parts.join("\n")}`:""}`;
+  }).join("\n\n");
+}
+
+function testMethodItems(value="") {
+  const text=String(value||"").trim();
+  if (!text) return [];
+  return text.split(/\n+|;\s+|\.\s+(?=[A-Z])/).map(item=>item.trim().replace(/[.;]+$/,"")).filter(Boolean);
+}
+
+function testMethodBulletText(value="") {
+  return testMethodItems(value).map(item=>`• ${item}`).join("\n");
+}
+
+function testMethodBulletHtml(value="") {
+  const items=testMethodItems(value);
+  return items.length?`<ul class="test-method-list">${items.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:"";
+}
+
+function organizedReviewCell(record,index,definition) {
+  const [key,label,type="text"]=definition;
+  if (type==="evidence") return `<td class="organized-cell evidence-column"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
+  let value=record[key]||"";
+  if (type==="date") value=isoDate(value);
+  if (type==="select") {
+    const options=CATEGORY_SHEETS.map(group=>`<option value="${esc(group)}"${group===value?" selected":""}>${esc(group)}</option>`).join("");
+    return `<td class="organized-cell"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
+  }
+  if (type==="long") return `<td class="organized-cell long-column"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
+  const cls=type==="wide"?" wide-column":"";
+  return `<td class="organized-cell${cls}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
+}
+
+function renderStructuredEvidenceReview() {
+  const headers=["Complaint Number","Lot Number","End Customer","Standard Test","Sample Source","Sample ID","Purpose","Method","Result","Outcome","Within Spec?","Issue Observed?","Source Page","Conditions"];
+  const rows=records.flatMap(record=>(record.testEvidence||[]).map(test=>[
+    record.complaintNo||"",record.lot||"",record.customerCompany||"",test.name||"",test.sampleSource||"",test.sampleId||"",
+    test.purpose||"",test.method||"",test.result||"",test.outcome||"",test.withinSpec||"",test.issueObserved||"",test.sourcePage||"",test.conditions||""
+  ]));
+  return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} test row${rows.length===1?"":"s"}</span></div>
+    ${rows.length?`<div class="table-scroll"><table class="structured-evidence-table"><thead><tr>${headers.map(header=>`<th>${esc(header)}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map(row=>`<tr>${row.map((value,index)=>`<td>${index===7?testMethodBulletHtml(value):esc(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+      :`<p class="hint">No structured test evidence was extracted for the current complaints.</p>`}</section>`;
+}
+
 function renderRecords() {
-  $("records").innerHTML = records.length
-    ? records.map(recordCard).join("")
-    : `<p class="hint">No extracted complaints yet.</p>`;
-  document.querySelectorAll(".remove-record").forEach(btn => {
-    btn.onclick = () => {
+  const target=$("records");
+  const tab=ORGANIZED_REVIEW_TABS[activeReviewTab]||ORGANIZED_REVIEW_TABS.overview;
+  if (!records.length) {
+    target.innerHTML=`<p class="hint">No extracted complaints yet.</p>`;
+    renderLotsTable();
+    return;
+  }
+  target.innerHTML=`<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
+    <div class="table-scroll organized-review-scroll"><table class="organized-review-table"><thead><tr>
+      ${tab.fields.map(([,label])=>`<th>${esc(label)}</th>`).join("")}<th>Action</th>
+    </tr></thead><tbody>${records.map((record,index)=>`<tr data-record-row data-index="${index}">
+      ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
+      <td class="organized-action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
+    </tr>`).join("")}</tbody></table></div>${activeReviewTab==="evidence"?renderStructuredEvidenceReview():""}`;
+  target.querySelectorAll(".remove-record").forEach(btn=>{
+    btn.onclick=()=>{
       syncRecordsFromDom();
       const index=Number(btn.dataset.index);
       collapsedRecords.delete(recordUiKey(records[index]));
@@ -1079,45 +1203,23 @@ function renderRecords() {
       renderRecords();
     };
   });
-  document.querySelectorAll(".toggle-record").forEach(btn => {
-    btn.onclick = () => {
+  target.querySelectorAll("[data-field]").forEach(input=>{
+    input.addEventListener("change",()=>{
       syncRecordsFromDom();
-      const index=Number(btn.dataset.index);
-      const key=recordUiKey(records[index]);
-      const card=btn.closest(".record");
-      const body=card.querySelector(".record-body");
-      if (card.classList.toggle("collapsed")) {
-        collapsedRecords.add(key);
-        body.hidden=true;
-        btn.textContent="Show details";
-        btn.setAttribute("aria-expanded","false");
-      } else {
-        collapsedRecords.delete(key);
-        body.hidden=false;
-        btn.textContent="Fold";
-        btn.setAttribute("aria-expanded","true");
-      }
-    };
-  });
-  document.querySelectorAll('[data-field="materialNo"]').forEach(input => {
-    input.addEventListener("change", e => {
-      const card=e.target.closest(".record");
-      const fam=productFamily(e.target.value);
-      if (fam) card.querySelector('[data-field="productFamily"]').value=fam;
+      renderLotsTable();
     });
-  });
-  document.querySelectorAll(".record [data-field]").forEach(input=>{
-    input.addEventListener("change",()=>{syncRecordsFromDom();renderLotsTable();});
   });
   renderLotsTable();
 }
 
 function syncRecordsFromDom() {
-  document.querySelectorAll(".record").forEach(card => {
-    const i = Number(card.dataset.index);
-    for (const input of card.querySelectorAll("[data-field]")) {
-      records[i][input.dataset.field] = input.value.trim();
-    }
+  document.querySelectorAll("[data-record-row]").forEach(row=>{
+    const index=Number(row.dataset.index);
+    for (const input of row.querySelectorAll("[data-field]")) records[index][input.dataset.field]=input.value.trim();
+    const family=productFamily(records[index].materialNo);
+    if (family) records[index].productFamily=family;
+    records[index].membraneType=membraneType(records[index].materialNo,records[index].productDescription)||records[index].membraneType||"";
+    records[index].daysToReport=daysBetweenDates(records[index].complaintRegisteredDate,records[index].reportDate)||records[index].daysToReport||"";
   });
 }
 
@@ -1874,7 +1976,9 @@ function formatSheet(ws, hasSource=false) {
     "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
     "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
     "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,"Complaint Number":24,
-    "End Customer":28,"Tests Performed":38,"Final Result / Status":22,"Registered Date":18,
+    "End Customer":28,"Tests Performed":38,"Final Result / Status":22,"Registered Date":18,"Date Registered":18,
+    "Lot Number":15,"Structured Test Evidence":72,"Conclusion of Root Cause Analysis":64,
+    "Purpose":28,"Method":44,"Result":48,"Conditions":42,
     "Source File":34
   };
   const headers=ws.getRow(1).values.slice(1).map(h=>String(h||""));
@@ -1890,9 +1994,9 @@ function formatSheet(ws, hasSource=false) {
   for (let r=2;r<=ws.rowCount;r++) {
     ws.getRow(r).alignment={vertical:"top",wrapText:true};
   }
-  for (const dateHeader of ["Complaint Registered Date","Registered Date","Report Date"]) {
+  for (const dateHeader of ["Complaint Registered Date","Registered Date","Date Registered","Report Date"]) {
     const index=headers.indexOf(dateHeader)+1;
-    if (index>0) for (let r=2;r<=ws.rowCount;r++) ws.getCell(r,index).numFmt="dd.mm.yyyy";
+    if (index>0) for (let r=2;r<=ws.rowCount;r++) ws.getCell(r,index).numFmt=ws.name===REVIEW_OVERVIEW_SHEET?"yyyy-mm-dd":"dd.mm.yyyy";
   }
   ws.autoFilter={from:{row:1,column:1},to:{row:ws.rowCount,column:ws.columnCount}};
 }
@@ -1902,6 +2006,9 @@ function writeSheet(ws, headers, rows, hasSource=false) {
   ws.addRow(headers);
   for (const row of rows) ws.addRow(headers.map(h=>row[h] ?? ""));
   formatSheet(ws,hasSource);
+  if (headers.includes("Structured Test Evidence") || headers.includes("Conclusion of Root Cause Analysis")) {
+    for (let row=2;row<=ws.rowCount;row++) ws.getRow(row).height=96;
+  }
 }
 
 function normalizeId(v) { return String(v||"").trim().toLowerCase(); }
@@ -1969,11 +2076,70 @@ function recordToEvidenceRows(r) {
     "Product Family":fam, "Units Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
     "Problem":r.problem||"", "Customer Reported Failure":r.customerReportedFailure||"",
     "Complaint Status":r.resultStatus||"", "Sample Source":t.sampleSource||"", "Sample ID":t.sampleId||"",
-    "Standard Test":t.name||"", "Standard Purpose":t.purpose||"", "Standard Method":t.method||"",
+    "Standard Test":t.name||"", "Standard Purpose":t.purpose||"", "Standard Method":testMethodBulletText(t.method),
     "Result (Source)":t.result||"", "Outcome":t.outcome||"", "Within Spec?":t.withinSpec||"",
     "Issue Observed?":t.issueObserved||"", "Source Page":t.sourcePage||"",
     "Case-specific Conditions / Source Detail":t.conditions||"", "Source File":r.sourceFile||""
   }));
+}
+
+function recordToOverviewRow(record) {
+  const row=recordToCategoryRow(record);
+  return {
+    "Source Group":record.sourceGroup||"Final Reports",
+    "Complaint Number":row["Complaint / Notification"],
+    "Lot Number":row["Lot"],
+    "End Customer":row["Customer Company"],
+    "Final Result / Status":row["Result / Status"],
+    "Standardized Symptom(s)":row["Standardized Symptom(s)"],
+    "Date Registered":parseFlexibleDate(row["Complaint Registered Date"])||"",
+    "Report Date":parseFlexibleDate(row["Report Date"])||"",
+    "Days":row["Days"],
+    "Membrane Type":row["Membrane Type"],
+    "Material No.":row["Material No."]
+  };
+}
+
+function recordToInvestigationRow(record) {
+  const row=recordToCategoryRow(record);
+  return {
+    "Complaint Number":row["Complaint / Notification"],
+    "Lot Number":row["Lot"],
+    "End Customer":row["Customer Company"],
+    "Standardized Symptom(s)":row["Standardized Symptom(s)"],
+    "Customer Reported Failure":row["Customer Reported Failure"],
+    "Tests Performed":row["Tests / Assays Applied"],
+    "MR-FR Area(s)":row["MR-FR Area(s)"],
+    "Rolls Implicated":row["Rolls Implicated"],
+    "Samples Received":row["Samples Received"]
+  };
+}
+
+function recordToRootCauseRows(record) {
+  const row=recordToCategoryRow(record);
+  const tests=record.testEvidence?.length?record.testEvidence:[{}];
+  return tests.map(test=>({
+    "Complaint Number":row["Complaint / Notification"],"Lot Number":row["Lot"],"End Customer":row["Customer Company"],
+    "Standard Test":test.name||"","Sample Source":test.sampleSource||"","Sample ID":test.sampleId||"",
+    "Purpose":test.purpose||"","Method":testMethodBulletText(test.method),"Result":test.result||"","Outcome":test.outcome||"",
+    "Within Spec?":test.withinSpec||"","Issue Observed?":test.issueObserved||"","Source Page":test.sourcePage||"",
+    "Conditions":test.conditions||"","Conclusion of Root Cause Analysis":row["Root Cause Analysis Conclusion"]
+  }));
+}
+
+function mergeOrganizedRows(existingRows,newRows) {
+  const replacementIds=new Set(newRows.map(row=>normalizeComplaintId(row["Complaint Number"])).filter(Boolean));
+  const kept=existingRows.filter(row=>!replacementIds.has(normalizeComplaintId(row["Complaint Number"])));
+  return [...kept,...newRows].sort((a,b)=>String(a["Complaint Number"]||"").localeCompare(String(b["Complaint Number"]||""),undefined,{numeric:true}));
+}
+
+function updateOrganizedSheet(wb,selectedSheets,name,headers,newRows) {
+  if (!selectedSheets.has(name)) {
+    removeSheetIfPresent(wb,name);
+    return;
+  }
+  const existing=sheetRows(wb.getWorksheet(name));
+  writeSheet(ensureSheet(wb,name),headers,mergeOrganizedRows(existing,newRows),false);
 }
 
 function categoryRowsToComplaintSummary(categoryRows) {
@@ -2100,6 +2266,10 @@ async function buildUpdatedWorkbook() {
   else removeSheetIfPresent(wb,COMPLAINT_SUMMARY_SHEET);
   if (selectedSheets.has(SUMMARY_SHEET)) writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
   else removeSheetIfPresent(wb,SUMMARY_SHEET);
+
+  updateOrganizedSheet(wb,selectedSheets,REVIEW_OVERVIEW_SHEET,REVIEW_OVERVIEW_HEADERS,records.map(recordToOverviewRow));
+  updateOrganizedSheet(wb,selectedSheets,REVIEW_INVESTIGATION_SHEET,REVIEW_INVESTIGATION_HEADERS,records.map(recordToInvestigationRow));
+  updateOrganizedSheet(wb,selectedSheets,REVIEW_ROOT_CAUSE_SHEET,REVIEW_ROOT_CAUSE_HEADERS,records.flatMap(recordToRootCauseRows));
 
   const familyRows=Object.fromEntries(FAMILY_SHEETS.map(f=>[f,[]]));
   const labels={"Final Reports":"Final Report","Ongoing - Email":"Ongoing - Email","Not in Detail Excel":"Not in Detail Excel"};
@@ -2382,18 +2552,6 @@ $("extractBtn").onclick=async()=>{
   }
 };
 
-$("foldAllBtn").onclick=()=>{
-  syncRecordsFromDom();
-  records.forEach(record=>collapsedRecords.add(recordUiKey(record)));
-  renderRecords();
-};
-
-$("unfoldAllBtn").onclick=()=>{
-  syncRecordsFromDom();
-  collapsedRecords.clear();
-  renderRecords();
-};
-
 $("saveDraftBtn").onclick=async()=>{
   $("draftStatus").className="status";
   $("draftStatus").textContent="Saving locally in this browser...";
@@ -2459,6 +2617,62 @@ $("buildBtn").onclick=async()=>{
     $("buildStatus").textContent=err.message;
   }
 };
+
+const ROLL_PLAN_REFERENCE = {
+  "Sheet1":{guide:true},
+  "ZM17_20mm":{machine:"ZM17",slitWidth:"20 mm",masterWidth:"1580 mm",sectionWidth:"780 mm",slots:76,zoneStarts:[0,13,25,38,51,63]},
+  "ZM17_25mm":{machine:"ZM17",slitWidth:"25 mm",masterWidth:"1580 mm",sectionWidth:"780 mm",slots:60,zoneStarts:[0,10,20,30,40,50]},
+  "ZM9_18mm":{machine:"ZM9",slitWidth:"18 mm",masterWidth:"1200 mm",sectionWidth:"360 mm",slots:57,zoneStarts:[0,10,19,29,38,48]},
+  "ZM9_20mm":{machine:"ZM9",slitWidth:"20 mm",masterWidth:"1200 mm",sectionWidth:"360 mm",slots:51,zoneStarts:[0,9,17,26,34,43]},
+  "ZM9_25mm":{machine:"ZM9",slitWidth:"25 mm",masterWidth:"1200 mm",sectionWidth:"360 mm",slots:42,zoneStarts:[0,7,14,21,28,35]},
+  "ZM10_20mm":{machine:"ZM10",slitWidth:"20 mm",masterWidth:"1200 mm",sectionWidth:"390 mm",slots:57,zoneStarts:[0,10,19,29,38,48]},
+  "ZM10_25mm":{machine:"ZM10",slitWidth:"25 mm",masterWidth:"1200 mm",sectionWidth:"360 mm",slots:45,zoneStarts:[0,8,15,23,30,38]}
+};
+
+function zoneForSlot(spec,slotIndex) {
+  let zone=1;
+  spec.zoneStarts.forEach((start,index)=>{if (slotIndex>=start) zone=index+1;});
+  return zone;
+}
+
+function renderRollPlanSheet() {
+  const name=$("rollPlanSheet").value;
+  const spec=ROLL_PLAN_REFERENCE[name]||ROLL_PLAN_REFERENCE.Sheet1;
+  $("rollPlanHeading").textContent=name;
+  if (spec.guide) {
+    $("rollPlanTable").innerHTML=`<div class="roll-plan-guide">
+      <h3>How to read the reference plan</h3>
+      <table><thead><tr><th>Item</th><th>Meaning</th></tr></thead><tbody>
+        <tr><td>Machine</td><td>Master-roll production machine.</td></tr>
+        <tr><td>Slit width</td><td>Width of each planned final roll.</td></tr>
+        <tr><td>Master roll (M1–M50)</td><td>Reference row for the source master roll.</td></tr>
+        <tr><td>Final-roll position</td><td>Numbered position across the master-roll width.</td></tr>
+        <tr><td>Zone</td><td>Position group across the width, shown with alternating colors.</td></tr>
+      </tbody></table>
+      <p class="hint">This is a structural reference only. It contains no production assignments or values from the supplied workbook.</p>
+    </div>`;
+    $("rollPlanStatus").className="status good";
+    $("rollPlanStatus").textContent="Reference guide displayed. Choose a ZM worksheet to view its complete 50-master-roll layout.";
+    return;
+  }
+  const zoneHeader=Array.from({length:spec.slots},(_,index)=>`<th class="plan-zone zone-${zoneForSlot(spec,index)}">${spec.zoneStarts.includes(index)?`Zone ${zoneForSlot(spec,index)}`:""}</th>`).join("");
+  const slotHeader=Array.from({length:spec.slots},(_,index)=>`<th class="plan-slot zone-${zoneForSlot(spec,index)}">${index+1}</th>`).join("");
+  const rows=Array.from({length:50},(_,masterIndex)=>`<tr><th class="plan-master">M${masterIndex+1}</th>${Array.from({length:spec.slots},(_,slotIndex)=>`<td class="plan-position zone-${zoneForSlot(spec,slotIndex)}" title="M${masterIndex+1} · final-roll position ${slotIndex+1} · Zone ${zoneForSlot(spec,slotIndex)}"></td>`).join("")}</tr>`).join("");
+  $("rollPlanTable").innerHTML=`<div class="roll-plan-meta">
+      <span><strong>Machine</strong>${esc(spec.machine)}</span><span><strong>Slit width</strong>${esc(spec.slitWidth)}</span>
+      <span><strong>Master width</strong>${esc(spec.masterWidth)}</span><span><strong>Reference section</strong>${esc(spec.sectionWidth)}</span>
+      <span><strong>Final-roll positions</strong>${spec.slots}</span><span><strong>Zones</strong>6</span>
+    </div><div class="roll-plan-grid-scroll"><table class="roll-plan-table"><thead><tr><th class="plan-master plan-sticky-corner">Master roll</th>${zoneHeader}</tr><tr><th class="plan-master">Final-roll position</th>${slotHeader}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  $("rollPlanStatus").className="status good";
+  $("rollPlanStatus").textContent=`Displaying ${name}: 50 master-roll rows × ${spec.slots} final-roll positions. Read-only reference.`;
+}
+
+function initializeRollPlanReference() {
+  $("rollPlanSheet").innerHTML=Object.keys(ROLL_PLAN_REFERENCE).map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join("");
+  renderRollPlanSheet();
+}
+
+$("rollPlanSheet").addEventListener("change",renderRollPlanSheet);
 
 function showAppView(viewId) {
   document.querySelectorAll(".app-view").forEach(view=>{view.hidden=view.id!==viewId;});
@@ -2810,23 +3024,23 @@ $("searchFamily").addEventListener("change",()=>{
 $("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
 $("decisionSearchBtn").onclick=runDecisionSearch;
 
-$("reviewSheetSelect").addEventListener("change",event=>{
-  syncRecordsFromDom();
-  activeReviewProfileName=event.target.value;
-  renderReviewColumnOptions();
-  renderRecords();
-});
-$("reviewEssentialBtn").onclick=()=>updateReviewSelection("essential");
-$("reviewSelectAllBtn").onclick=()=>updateReviewSelection("all");
-$("reviewClearAllBtn").onclick=()=>updateReviewSelection("none");
-$("reviewSourceDetails").addEventListener("change",()=>{
-  syncRecordsFromDom();
-  renderRecords();
+document.querySelectorAll("[data-review-tab]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    syncRecordsFromDom();
+    activeReviewTab=button.dataset.reviewTab;
+    document.querySelectorAll("[data-review-tab]").forEach(item=>{
+      const active=item.dataset.reviewTab===activeReviewTab;
+      item.classList.toggle("active",active);
+      item.setAttribute("aria-selected",String(active));
+    });
+    renderRecords();
+  });
 });
 
 renderSummaryFieldOptions();
 renderReviewControls();
 renderRecords();
+initializeRollPlanReference();
 restoreTemporaryDraft();
 
 window.__reportExtractionDebug = {
