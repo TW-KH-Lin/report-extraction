@@ -55,8 +55,13 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - ZIP containing PDF/MSG
 - Add reports in later selections without replacing earlier extracted complaints
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
-- Review every extracted complaint as one complete row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
-- Structured Test Evidence appears as a separate one-test-per-row table, with test methods formatted as bullet points
+- Review every extracted complaint as one complete editable row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
+- The Complaint overview uses compact two-line headings and narrower columns; longer values wrap and expand so information is not hidden
+- Compact typography is applied consistently across all app tabs
+- End-customer names are standardized to `Key name, City, Country code` where the location can be identified
+- Membrane labels use only the normalized family name, including `CN140ub` for the unbacked CN140 family
+- Structured Test Evidence appears as a compact editable one-test-per-row table; complaint, lot and customer are stacked in one shared details column, and test methods are always formatted as bullet points
+- Click **Save changes** to keep edited review and test-evidence values for the next Excel export
 - Dates in the organized overview use year-month-day format
 - Export the three organized review tabs to separate Excel worksheets
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
@@ -78,7 +83,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Complaint number
 - Complaint registered date, report date and elapsed days
 - Material number
-- Membrane type (including backed/unbacked when recoverable)
+- Membrane type normalized to CN95 / CN110 / CN140 / CN140ub / CN180
 - product-family mapping:
   - `1UN95` → CN95
   - `1UN14AR` → CN140ub

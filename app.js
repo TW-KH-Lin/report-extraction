@@ -206,13 +206,7 @@ function normalizedProductFamily(material="", statedFamily="") {
 }
 
 function membraneType(material="", description="") {
-  const family=productFamily(material);
-  const familyLabel=family==="CN140ub"?"CN140":family;
-  const source=`${material} ${description}`.toLowerCase();
-  let backing="";
-  if (/\bunbacked\b/.test(source) || /^1un14ar/i.test(material)) backing="unbacked";
-  else if (/\bbacked\b/.test(source) || /^1un(?:95|11|14er|18)/i.test(material)) backing="backed";
-  return [familyLabel,backing].filter(Boolean).join(" ");
+  return productFamily(material)||productFamilyFromText(description)||"";
 }
 
 function complaintClassification(problem="", customerFailure="") {
@@ -375,6 +369,56 @@ function canonicalCustomerName(value="") {
     .replace(/\.{2,}$/,".")
     .replace(/\s{2,}/g," ")
     .trim();
+}
+
+const CUSTOMER_LOCATIONS = [
+  ["Hangzhou","CN",["hangzhou","hz"]],["Xiamen","CN",["xiamen","xm"]],
+  ["Nanjing","CN",["nanjing","nj"]],["Guangzhou","CN",["guangzhou","gz"]],
+  ["Shenzhen","CN",["shenzhen","sz"]],["Chengdu","CN",["chengdu","cd","sichuan","sc"]],
+  ["Chongqing","CN",["chongqing","cq"]],["Beijing","CN",["beijing","bj"]],
+  ["Shanghai","CN",["shanghai","sh"]],["Suzhou","CN",["suzhou"]],
+  ["Wuhan","CN",["wuhan"]],["Qingdao","CN",["qingdao"]],
+  ["Tokyo","JP",["tokyo"]],["Osaka","JP",["osaka"]],["Seoul","KR",["seoul"]],
+  ["Mumbai","IN",["mumbai"]],["Delhi","IN",["delhi","new delhi"]]
+];
+
+function countryCodeFromCustomerText(value="",sourceFile="") {
+  const text=`${value} ${sourceFile}`.toLowerCase();
+  const rules=[
+    ["US",/\b(?:usa|u\.s\.a|united states|america)\b/],["JP",/\b(?:japan|japanese|jap)\b/],
+    ["KR",/\b(?:south korea|korea|korean)\b/],["IN",/\b(?:india|indian)\b/],
+    ["DE",/\b(?:germany|german)\b/],["GB",/\b(?:united kingdom|uk|britain)\b/],
+    ["FR",/\b(?:france|french)\b/],["CN",/\b(?:china|chinese|prc)\b/]
+  ];
+  return rules.find(([,pattern])=>pattern.test(text))?.[0]||"";
+}
+
+function compactCustomerName(value="",sourceFile="") {
+  const original=canonicalCustomerName(value);
+  if (!original) return "";
+  const combined=`${original} ${sourceFile}`.toLowerCase();
+  let city="", country=countryCodeFromCustomerText(original,sourceFile);
+  for (const [name,code,aliases] of CUSTOMER_LOCATIONS) {
+    if (aliases.some(alias=>new RegExp(`(?:^|[^a-z])${alias.replace(/\s+/g,"\\s+")}(?:[^a-z]|$)`,"i").test(combined))) {
+      city=name;
+      country=country||code;
+      break;
+    }
+  }
+  const sourceTag=String(sourceFile).match(/(?:^|[(_-])(USA|US|JAP|JP|KR|IN|DE|UK)(?=[_)-])/i)?.[2]?.toUpperCase()||"";
+  if (!country && sourceTag) country={USA:"US",US:"US",JAP:"JP",JP:"JP",KR:"KR",IN:"IN",DE:"DE",UK:"GB"}[sourceTag]||sourceTag;
+  if (!country && city) country=CUSTOMER_LOCATIONS.find(([name])=>name===city)?.[1]||"";
+  let key=original
+    .replace(/\([^)]*\)/g," ")
+    .replace(/\b(?:hangzhou|xiamen|nanjing|guangzhou|shenzhen|chengdu|chongqing|beijing|shanghai|suzhou|wuhan|qingdao|sichuan|tokyo|osaka|seoul|mumbai|new delhi|delhi)\b/gi," ")
+    .replace(/\b(?:china|chinese|prc|usa|united states|america|japan|japanese|korea|korean|india|indian|germany|german|united kingdom|uk|britain)\b/gi," ")
+    .replace(/\b(?:biopharm(?:aceuticals?)?|biotech(?:nology)?|technology|medical|diagnostics?|diagnostic|healthcare|products?)\b.*$/i,"")
+    .replace(/\b(?:co\.?\s*,?\s*ltd\.?|company|corporation|corp\.?|inc\.?|llc|gmbh|limited)\b.*$/i,"")
+    .replace(/^[,\s-]+|[,\s-]+$/g,"")
+    .replace(/\s{2,}/g," ")
+    .trim();
+  if (!key) key=original.split(/[,()]/)[0].trim();
+  return [key,city,country].filter(Boolean).join(", ");
 }
 
 function plausibleCustomerName(value="") {
@@ -1095,10 +1139,10 @@ const ORGANIZED_REVIEW_TABS = {
   overview:{
     label:"Complaint overview",
     fields:[
-      ["sourceGroup","Source Group","select"],["complaintNo","Complaint Number"],["lot","Lot Number"],
-      ["customerCompany","End Customer","wide"],["resultStatus","Final Result / Status"],
-      ["standardizedSymptoms","Standardized Symptom(s)","wide"],["complaintRegisteredDate","Date Registered","date"],
-      ["reportDate","Report Date","date"],["daysToReport","Days"],["membraneType","Membrane Type"],["materialNo","Material No."]
+      ["sourceGroup","Source Group","select"],["complaintNo","Complaint Number","compact"],["lot","Lot Number"],
+      ["customerCompany","End Customer","compact"],["resultStatus","Final Result / Status","compact"],
+      ["standardizedSymptoms","Standardized Symptom(s)","compact"],["complaintRegisteredDate","Date Registered","date"],
+      ["reportDate","Report Date","date"],["daysToReport","Days"],["membraneType","Membrane Type"],["materialNo","Material No.","compact"]
     ]
   },
   investigation:{
@@ -1118,6 +1162,18 @@ const ORGANIZED_REVIEW_TABS = {
     ]
   }
 };
+
+const OVERVIEW_HEADER_LINES = {
+  "Source Group":["Source","Group"],"Complaint Number":["Complaint","Number"],"Lot Number":["Lot","Number"],
+  "End Customer":["End","Customer"],"Final Result / Status":["Final Result","/ Status"],
+  "Standardized Symptom(s)":["Standardized","Symptom(s)"],"Date Registered":["Date","Registered"],
+  "Report Date":["Report","Date"],"Membrane Type":["Membrane","Type"],"Material No.":["Material","No."]
+};
+
+function organizedHeaderHtml(label) {
+  const lines=activeReviewTab==="overview"?OVERVIEW_HEADER_LINES[label]:null;
+  return lines?`${esc(lines[0])}<br>${esc(lines[1])}`:esc(label);
+}
 
 function structuredTestEvidenceText(record) {
   const tests=record.testEvidence||[];
@@ -1141,7 +1197,9 @@ function structuredTestEvidenceText(record) {
 function testMethodItems(value="") {
   const text=String(value||"").trim();
   if (!text) return [];
-  return text.split(/\n+|;\s+|\.\s+(?=[A-Z])/).map(item=>item.trim().replace(/[.;]+$/,"")).filter(Boolean);
+  return text.split(/\n+|;\s+|\.\s+(?=[A-Z])/)
+    .map(item=>item.replace(/^(?:\s*[•*\-–—]\s*)+/,"").trim().replace(/[.;]+$/,""))
+    .filter(Boolean);
 }
 
 function testMethodBulletText(value="") {
@@ -1153,6 +1211,24 @@ function testMethodBulletHtml(value="") {
   return items.length?`<ul class="test-method-list">${items.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:"";
 }
 
+function testsPerformedItems(value="") {
+  return String(value||"").split(/\n+|\s*;\s*/).map(item=>item.replace(/^[•*\-–—]\s*/,"").trim()).filter(Boolean);
+}
+
+function testsPerformedBulletText(value="") {
+  return testsPerformedItems(value).map(item=>`• ${item}`).join("\n");
+}
+
+function prepareRecordForReview(record) {
+  if (record._organizedReviewPrepared) return;
+  record.customerCompany=compactCustomerName(record.customerCompany,record.sourceFile);
+  record.membraneType=productFamily(record.materialNo)
+    ||productFamilyFromText(`${record.membraneType||""} ${record.productDescription||""}`)
+    ||String(record.membraneType||"").replace(/\b(?:un)?backed\b/gi,"").replace(/\s{2,}/g," ").trim();
+  record.assaysApplied=testsPerformedBulletText(record.assaysApplied);
+  record._organizedReviewPrepared=true;
+}
+
 function organizedReviewCell(record,index,definition) {
   const [key,label,type="text"]=definition;
   if (type==="evidence") return `<td class="organized-cell evidence-column"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
@@ -1162,38 +1238,68 @@ function organizedReviewCell(record,index,definition) {
     const options=CATEGORY_SHEETS.map(group=>`<option value="${esc(group)}"${group===value?" selected":""}>${esc(group)}</option>`).join("");
     return `<td class="organized-cell"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
   }
+  if (type==="compact") return `<td class="organized-cell compact-column"><textarea rows="1" class="compact-wrap" aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
   if (type==="long") return `<td class="organized-cell long-column"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
   const cls=type==="wide"?" wide-column":"";
   return `<td class="organized-cell${cls}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
 }
 
 function renderStructuredEvidenceReview() {
-  const headers=["Complaint Number","Lot Number","End Customer","Standard Test","Sample Source","Sample ID","Purpose","Method","Result","Outcome","Within Spec?","Issue Observed?","Source Page","Conditions"];
-  const rows=records.flatMap(record=>(record.testEvidence||[]).map(test=>[
-    record.complaintNo||"",record.lot||"",record.customerCompany||"",test.name||"",test.sampleSource||"",test.sampleId||"",
-    test.purpose||"",test.method||"",test.result||"",test.outcome||"",test.withinSpec||"",test.issueObserved||"",test.sourcePage||"",test.conditions||""
-  ]));
-  return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} test row${rows.length===1?"":"s"}</span></div>
-    ${rows.length?`<div class="table-scroll"><table class="structured-evidence-table"><thead><tr>${headers.map(header=>`<th>${esc(header)}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map(row=>`<tr>${row.map((value,index)=>`<td>${index===7?testMethodBulletHtml(value):esc(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+  const fields=[
+    ["sharedDetails","","Complaint Details"],
+    ["test","name","Standard Test"],["test","sampleSource","Sample Source"],["test","sampleId","Sample ID"],
+    ["test","purpose","Purpose","long"],["test","method","Method","long"],["test","result","Result","long"],
+    ["test","outcome","Outcome"],["test","withinSpec","Within Spec?"],["test","issueObserved","Issue Observed?"],
+    ["test","sourcePage","Source Page"],["test","conditions","Conditions","long"]
+  ];
+  const rows=records.flatMap((record,recordIndex)=>(record.testEvidence||[]).map((test,testIndex)=>({record,test,recordIndex,testIndex})));
+  const cell=(item,definition)=>{
+    const [kind,key,label,type="text"]=definition;
+    if (kind==="sharedDetails") {
+      if (item.testIndex>0) return "";
+      const sharedFields=[["complaintNo","Complaint"],["lot","Lot"],["customerCompany","Customer"]];
+      return `<td rowspan="${item.record.testEvidence.length}" class="evidence-case-cell"><div class="evidence-case-stack">
+        ${sharedFields.map(([sharedKey,sharedLabel])=>`<label><span>${esc(sharedLabel)}</span><input aria-label="${esc(sharedLabel)} for evidence rows" data-record-index="${item.recordIndex}" data-evidence-shared="${sharedKey}" value="${esc(item.record[sharedKey]||"")}"></label>`).join("")}
+      </div></td>`;
+    }
+    let value=kind==="shared"?item.record[key]||"":item.test[key]||"";
+    if (key==="method") value=testMethodBulletText(value);
+    const attrs=`data-record-index="${item.recordIndex}" ${kind==="shared"?`data-evidence-shared="${key}"`:`data-test-index="${item.testIndex}" data-test-field="${key}"`}`;
+    const rowspan=kind==="shared"?` rowspan="${item.record.testEvidence.length}"`:"";
+    return type==="long"
+      ?`<td${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
+      :`<td${rowspan}><input aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs} value="${esc(value)}"></td>`;
+  };
+  return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} editable test row${rows.length===1?"":"s"}</span></div>
+    ${rows.length?`<div class="table-scroll"><table class="structured-evidence-table"><thead><tr>${fields.map(([, ,label])=>`<th>${esc(label)}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map(item=>`<tr>${fields.map(definition=>cell(item,definition)).join("")}</tr>`).join("")}</tbody></table></div>`
       :`<p class="hint">No structured test evidence was extracted for the current complaints.</p>`}</section>`;
 }
 
 function renderRecords() {
   const target=$("records");
   const tab=ORGANIZED_REVIEW_TABS[activeReviewTab]||ORGANIZED_REVIEW_TABS.overview;
+  records.forEach(prepareRecordForReview);
   if (!records.length) {
     target.innerHTML=`<p class="hint">No extracted complaints yet.</p>`;
     renderLotsTable();
     return;
   }
   target.innerHTML=`<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
-    <div class="table-scroll organized-review-scroll"><table class="organized-review-table"><thead><tr>
-      ${tab.fields.map(([,label])=>`<th>${esc(label)}</th>`).join("")}<th>Action</th>
+    <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><thead><tr>
+      ${tab.fields.map(([,label])=>`<th>${organizedHeaderHtml(label)}</th>`).join("")}<th>Action</th>
     </tr></thead><tbody>${records.map((record,index)=>`<tr data-record-row data-index="${index}">
       ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
       <td class="organized-action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
     </tr>`).join("")}</tbody></table></div>${activeReviewTab==="evidence"?renderStructuredEvidenceReview():""}`;
+  target.querySelectorAll("textarea.compact-wrap").forEach(textarea=>{
+    const fit=()=>{
+      textarea.style.height="auto";
+      textarea.style.height=`${textarea.scrollHeight+2}px`;
+    };
+    fit();
+    textarea.addEventListener("input",fit);
+  });
   target.querySelectorAll(".remove-record").forEach(btn=>{
     btn.onclick=()=>{
       syncRecordsFromDom();
@@ -1203,7 +1309,7 @@ function renderRecords() {
       renderRecords();
     };
   });
-  target.querySelectorAll("[data-field]").forEach(input=>{
+  target.querySelectorAll("[data-field],[data-evidence-shared],[data-test-field]").forEach(input=>{
     input.addEventListener("change",()=>{
       syncRecordsFromDom();
       renderLotsTable();
@@ -1215,11 +1321,24 @@ function renderRecords() {
 function syncRecordsFromDom() {
   document.querySelectorAll("[data-record-row]").forEach(row=>{
     const index=Number(row.dataset.index);
-    for (const input of row.querySelectorAll("[data-field]")) records[index][input.dataset.field]=input.value.trim();
+    for (const input of row.querySelectorAll("[data-field]")) {
+      records[index][input.dataset.field]=input.dataset.field==="assaysApplied"?testsPerformedBulletText(input.value):input.value.trim();
+    }
     const family=productFamily(records[index].materialNo);
     if (family) records[index].productFamily=family;
     records[index].membraneType=membraneType(records[index].materialNo,records[index].productDescription)||records[index].membraneType||"";
     records[index].daysToReport=daysBetweenDates(records[index].complaintRegisteredDate,records[index].reportDate)||records[index].daysToReport||"";
+  });
+  document.querySelectorAll("[data-evidence-shared]").forEach(input=>{
+    const index=Number(input.dataset.recordIndex);
+    if (records[index]) records[index][input.dataset.evidenceShared]=input.value.trim();
+  });
+  document.querySelectorAll("[data-test-field]").forEach(input=>{
+    const recordIndex=Number(input.dataset.recordIndex), testIndex=Number(input.dataset.testIndex);
+    const test=records[recordIndex]?.testEvidence?.[testIndex];
+    if (!test) return;
+    const value=input.dataset.testField==="method"?testMethodBulletText(input.value):input.value.trim();
+    test[input.dataset.testField]=value;
   });
 }
 
@@ -2558,7 +2677,7 @@ $("saveDraftBtn").onclick=async()=>{
   try {
     await saveTemporaryDraft();
     $("draftStatus").className="status good";
-    $("draftStatus").textContent=`Saved ${records.length} complaint(s) temporarily in this browser. Nothing was uploaded.`;
+    $("draftStatus").textContent=`Saved changes for ${records.length} complaint(s) in this browser. These saved values will be used for the next Excel export. Nothing was uploaded.`;
   } catch(err) {
     $("draftStatus").className="status bad";
     $("draftStatus").textContent=err.message;

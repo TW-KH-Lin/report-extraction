@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=12" />
+  <link rel="stylesheet" href="./styles.css?v=17" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -50,7 +50,7 @@
           <p class="hint">Each complaint occupies one complete row. Use the three tabs to move from case overview to investigation details and test evidence.</p>
         </div>
         <div class="review-actions">
-          <button id="saveDraftBtn" class="primary">Save temporarily</button>
+          <button id="saveDraftBtn" class="primary">Save changes</button>
           <button id="clearBtn" class="secondary">Clear extracted rows</button>
         </div>
       </div>
@@ -247,6 +247,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=36"></script>
+  <script type="module" src="./app.js?v=40"></script>
 </body>
 </html>
