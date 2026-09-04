@@ -113,6 +113,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Dedicated `Complaint Summary` sheet with one reusable row per complaint for later overview and search
 - Legacy-format CN sheets are preserved unchanged so historical rows are not removed; new records remain available in the standardized summary and category sheets
 - Manual review/edit before export
+- Matching Complaint Number, Lot Number and Customer column widths across all three review tabs
+- Compact two-line headers across all three review tables
 - Lot-history lookup in the uploaded Excel and current extraction
 - Unique complaint count for the same lot
 - Symptom-frequency summary without double-counting complaints repeated across workbook sheets

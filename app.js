@@ -1169,16 +1169,19 @@ const ORGANIZED_REVIEW_TABS = {
   }
 };
 
-const OVERVIEW_HEADER_LINES = {
+const ORGANIZED_HEADER_LINES = {
   "Complaint Number":["Complaint","Number"],"Lot Number":["Lot","Number"],
   "Customer":["Customer",""],"Final Result / Status":["Final Result","/ Status"],
   "Standardized Symptom(s)":["Standardized","Symptom(s)"],"Date Registered":["Date","Registered"],
-  "Report Date":["Report","Date"],"Membrane Type":["Membrane","Type"],"Material No.":["Material","No."]
+  "Report Date":["Report","Date"],"Membrane Type":["Membrane","Type"],"Material No.":["Material","No."],
+  "Customer Reported Failure":["Customer Reported","Failure"],"Tests Performed":["Tests","Performed"],
+  "MR-FR Area(s)":["MR-FR","Area(s)"],"Rolls Implicated":["Rolls","Implicated"],
+  "Samples Received":["Samples","Received"],"Conclusion of Root Cause Analysis":["Conclusion of","Root Cause Analysis"]
 };
 
 function organizedHeaderHtml(label) {
-  const lines=activeReviewTab==="overview"?OVERVIEW_HEADER_LINES[label]:null;
-  return lines?`${esc(lines[0])}<br>${esc(lines[1])}`:esc(label);
+  const lines=ORGANIZED_HEADER_LINES[label]||[label,""];
+  return `${esc(lines[0])}<br>${lines[1]?esc(lines[1]):"&nbsp;"}`;
 }
 
 function structuredTestEvidenceText(record) {
@@ -1306,8 +1309,10 @@ function renderRecords() {
     return;
   }
   target.innerHTML=`<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
-    <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><thead><tr>
-      ${tab.fields.map(([key,label])=>`<th class="field-${key}">${organizedHeaderHtml(label)}</th>`).join("")}<th>Action</th>
+    <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><colgroup>
+      ${tab.fields.map(([key])=>`<col class="field-${key}">`).join("")}<col class="field-action">
+    </colgroup><thead><tr>
+      ${tab.fields.map(([key,label])=>`<th class="field-${key}">${organizedHeaderHtml(label)}</th>`).join("")}<th>Action<br>&nbsp;</th>
     </tr></thead><tbody>${records.map((record,index)=>`<tr class="case-tone-${index%4}" data-record-row data-index="${index}">
       ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
       <td class="organized-action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
