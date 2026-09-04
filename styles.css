@@ -150,19 +150,19 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin:12px 0 6px; color:#17365d; }
 .organized-review-heading span { color:#64748b; font-size:13px; }
 .organized-review-scroll { border:1px solid #dfe5ec; border-radius:9px; }
-.organized-review-table { margin-top:0; min-width:1550px; table-layout:fixed; }
+.organized-review-table { width:100%; min-width:0; margin-top:0; table-layout:fixed; }
 .organized-review-table th { white-space:normal; line-height:1.15; padding:6px 4px; vertical-align:middle; }
 .organized-review-table td { padding:6px; }
-.organized-review-table input, .organized-review-table select, .organized-review-table textarea { width:100%; min-width:140px; }
-.organized-review-table textarea { min-width:360px; min-height:118px; resize:vertical; }
-.organized-review-table .wide-column input { min-width:260px; }
-.organized-review-table col.field-complaintNo { width:150px; }
-.organized-review-table col.field-lot { width:105px; }
-.organized-review-table col.field-customerCompany { width:210px; }
-.organized-review-table col.field-action { width:78px; }
-.organized-review-table .field-complaintNo { width:150px; min-width:150px; max-width:150px; }
-.organized-review-table .field-lot { width:105px; min-width:105px; max-width:105px; }
-.organized-review-table .field-customerCompany { width:210px; min-width:210px; max-width:210px; }
+.organized-review-table input, .organized-review-table select, .organized-review-table textarea { width:100%; min-width:0; max-width:100%; display:block; }
+.organized-review-table textarea { min-width:0; min-height:118px; resize:vertical; }
+.organized-review-table .wide-column input { min-width:0; }
+.organized-review-table col.field-complaintNo { width:10%; }
+.organized-review-table col.field-lot { width:7%; }
+.organized-review-table col.field-customerCompany { width:14%; }
+.organized-review-table col.field-action { width:5%; }
+.organized-review-table .field-complaintNo { width:10%; min-width:0; max-width:none; }
+.organized-review-table .field-lot { width:7%; min-width:0; max-width:none; }
+.organized-review-table .field-customerCompany { width:14%; min-width:0; max-width:none; }
 .organized-review-table .field-complaintNo input, .organized-review-table .field-complaintNo textarea,
 .organized-review-table .field-lot input, .organized-review-table .field-lot textarea,
 .organized-review-table .field-customerCompany input, .organized-review-table .field-customerCompany textarea { min-width:0; }
@@ -174,7 +174,7 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table tr[class*="case-tone-"] input, .organized-review-table tr[class*="case-tone-"] select,
 .organized-review-table tr[class*="case-tone-"] textarea, .structured-evidence-table tr[class*="case-tone-"] input,
 .structured-evidence-table tr[class*="case-tone-"] textarea { background:rgba(255,255,255,.78); }
-.organized-review-table.review-overview { min-width:1040px; }
+.organized-review-table.review-overview { width:100%; min-width:0; }
 .organized-review-table.review-overview td { padding:4px; }
 .organized-review-table.review-overview input, .organized-review-table.review-overview select { min-width:0; padding:5px 6px; font-size:12px; }
 .organized-review-table.review-overview .wide-column input { min-width:0; }
@@ -188,16 +188,17 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table.review-overview th:nth-child(9) { width:8%; }
 .organized-review-table.review-overview th:nth-child(10) { width:10%; }
 .organized-review-table.review-overview th:nth-child(11) { width:7%; }
-.organized-review-table.review-investigation { min-width:1640px; }
-.organized-review-table.review-investigation col.field-standardizedSymptoms { width:170px; }
-.organized-review-table.review-investigation col.field-customerReportedFailure { width:300px; }
-.organized-review-table.review-investigation col.field-assaysApplied { width:260px; }
-.organized-review-table.review-investigation col.field-mrfrAreas { width:160px; }
-.organized-review-table.review-investigation col.field-rollsImplicated { width:95px; }
-.organized-review-table.review-investigation col.field-samplesReceived { width:110px; }
-.organized-review-table.review-investigation .organized-cell input,
-.organized-review-table.review-investigation .organized-cell select,
-.organized-review-table.review-investigation .organized-cell textarea { min-width:0; max-width:100%; display:block; }
+.organized-review-table.review-investigation { width:100%; min-width:0; }
+.organized-review-table.review-investigation col.field-standardizedSymptoms { width:10%; }
+.organized-review-table.review-investigation col.field-customerReportedFailure { width:16%; }
+.organized-review-table.review-investigation col.field-assaysApplied { width:14%; }
+.organized-review-table.review-investigation col.field-mrfrAreas { width:9%; }
+.organized-review-table.review-investigation col.field-rollsImplicated,
+.organized-review-table.review-investigation col.field-samplesReceived { width:6%; }
+.organized-review-table.review-investigation col.field-action { width:8%; }
+.organized-review-table.review-evidence { width:100%; min-width:0; }
+.organized-review-table.review-evidence col.field-rootCauseConclusion { width:59%; }
+.organized-review-table.review-evidence col.field-action { width:10%; }
 .organized-review-table .evidence-column { min-width:540px; }
 .structured-evidence-text { max-height:240px; overflow:auto; white-space:normal; line-height:1.45; color:#334155; }
 .structured-evidence-section { margin-top:22px; padding-top:16px; border-top:1px solid #dfe5ec; }

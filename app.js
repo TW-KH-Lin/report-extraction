@@ -1155,8 +1155,8 @@ const ORGANIZED_REVIEW_TABS = {
     label:"Complaint investigation",
     fields:[
       ["complaintNo","Complaint Number","compact"],["lot","Lot Number"],["customerCompany","Customer","compact"],
-      ["standardizedSymptoms","Standardized Symptom(s)","wide"],["customerReportedFailure","Customer Reported Failure","long"],
-      ["assaysApplied","Tests Performed","long"],["mrfrAreas","MR-FR Area(s)","wide"],
+      ["standardizedSymptoms","Standardized Symptom(s)","compact"],["customerReportedFailure","Customer Reported Failure","long"],
+      ["assaysApplied","Tests Performed","long"],["mrfrAreas","MR-FR Area(s)","compact"],
       ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"]
     ]
   },
