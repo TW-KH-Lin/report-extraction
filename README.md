@@ -53,6 +53,10 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - PDF complaint report extraction
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
+- Per-field extraction validation with confidence, report page and source-text evidence before export
+- Sequential large-file processing with live progress and a safe cancel button to keep the page responsive
+- Repeated-complaint comparison showing current and newly extracted values before the user chooses which version to keep
+- Responsive iPhone card layout for complaint and structured-test review
 - Add reports in later selections without replacing earlier extracted complaints
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
 - Review every extracted complaint as one complete editable row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
@@ -138,12 +142,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 
 ## Best next upgrade
 
-Add a browser-side review screen showing:
-- extracted value
-- confidence
-- report page / source sentence
-
-Then add optional browser OCR for scanned PDFs.
+Add optional browser OCR for scanned PDFs.
 
 ## Bundled third-party libraries
 

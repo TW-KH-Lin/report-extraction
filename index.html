@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=22" />
+  <link rel="stylesheet" href="./styles.css?v=25" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -37,10 +37,18 @@
 
     <section class="panel">
       <h2>2. Add complaint files</h2>
-      <p class="hint">Select multiple files at once or add more files later. A repeated complaint updates its existing row; a different complaint is added.</p>
+      <p class="hint">Select multiple files at once or add more files later. A repeated complaint is compared with the current row before you choose which version to keep.</p>
       <input id="complaintFiles" type="file" accept=".pdf,.msg,.zip" multiple />
-      <button id="extractBtn" class="primary">Extract key information</button>
+      <span class="extraction-actions">
+        <button id="extractBtn" class="primary">Extract key information</button>
+        <button id="cancelExtractBtn" class="secondary" type="button" hidden>Cancel extraction</button>
+      </span>
+      <div id="extractProgressWrap" class="extraction-progress" hidden>
+        <progress id="extractProgress" max="100" value="0" aria-label="Report extraction progress"></progress>
+        <span id="extractQueueStatus"></span>
+      </div>
       <div id="extractStatus" class="status"></div>
+      <div id="duplicateReview" class="duplicate-review" hidden></div>
     </section>
 
     <section class="panel">
@@ -247,6 +255,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=47"></script>
+  <script type="module" src="./app.js?v=50"></script>
 </body>
 </html>

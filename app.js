@@ -176,6 +176,9 @@ let selectedLotFamilies = new Set(LOT_FAMILY_ORDER);
 let activeReviewTab = "overview";
 let reviewProfiles = [DEFAULT_REVIEW_PROFILE,...BUILT_IN_REVIEW_PROFILES];
 let activeReviewProfileName = DEFAULT_REVIEW_PROFILE.name;
+let extractionRunning = false;
+let extractionCancelled = false;
+let pendingDuplicateConflicts = [];
 const reviewSelections = new Map(reviewProfiles.map(profile=>[
   profile.name,
   new Set(profile.columns.filter(column=>column.supported && (!profile.isDefault || column.essential)).map(column=>column.id))
@@ -186,6 +189,17 @@ const $ = (id) => document.getElementById(id);
 const esc = (s="") => String(s)
   .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
   .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+
+function yieldToBrowser() {
+  return new Promise(resolve=>setTimeout(resolve,0));
+}
+
+function assertExtractionActive() {
+  if (!extractionRunning || !extractionCancelled) return;
+  const error=new Error("Extraction cancelled by user.");
+  error.name="AbortError";
+  throw error;
+}
 
 function productFamily(material="") {
   const code = material.toUpperCase().replace(/\s/g,"");
@@ -852,6 +866,7 @@ async function pdfText(arrayBuffer) {
   const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
   const pages = [];
   for (let n=1; n<=pdf.numPages; n++) {
+    assertExtractionActive();
     const page = await pdf.getPage(n);
     const content = await page.getTextContent();
     const lines = [];
@@ -873,6 +888,7 @@ async function pdfText(arrayBuffer) {
     }
     if (line.length) lines.push(line.join(" ").trim());
     pages.push(`--- Page ${n} ---\n${lines.filter(Boolean).join("\n")}`);
+    await yieldToBrowser();
   }
   return pages.join("\n");
 }
@@ -1008,16 +1024,20 @@ async function extractOne(name, buffer) {
 async function expandFiles(fileList) {
   const expanded = [];
   for (const file of fileList) {
+    assertExtractionActive();
     if (file.name.toLowerCase().endsWith(".zip")) {
       const zip = await JSZip.loadAsync(await file.arrayBuffer());
       for (const [name, entry] of Object.entries(zip.files)) {
+        assertExtractionActive();
         if (!entry.dir && /\.(pdf|msg)$/i.test(name)) {
           expanded.push({name:name.split("/").pop(), buffer:await entry.async("arraybuffer")});
+          await yieldToBrowser();
         }
       }
     } else {
       expanded.push({name:file.name, buffer:await file.arrayBuffer()});
     }
+    await yieldToBrowser();
   }
   return expanded;
 }
@@ -1184,6 +1204,101 @@ function organizedHeaderHtml(label) {
   return `${esc(lines[0])}<br>${lines[1]?esc(lines[1]):"&nbsp;"}`;
 }
 
+const VALIDATION_FIELDS = [
+  {key:"complaintNo",label:"Complaint Number",required:true},
+  {key:"lot",label:"Lot Number",required:true},
+  {key:"customerCompany",label:"Customer",required:true},
+  {key:"materialNo",label:"Material No.",required:true},
+  {key:"membraneType",label:"Membrane Type",required:true,sourceKeys:["materialNo","productDescription"]},
+  {key:"resultStatus",label:"Final Result / Status",required:true},
+  {key:"standardizedSymptoms",label:"Standardized Symptom(s)",required:true,sourceKeys:["problem","customerReportedFailure","rootCauseConclusion"]},
+  {key:"complaintRegisteredDate",label:"Date Registered",required:true},
+  {key:"reportDate",label:"Report Date",required:true},
+  {key:"customerReportedFailure",label:"Customer Reported Failure",required:true,sourceKeys:["problem"]},
+  {key:"assaysApplied",label:"Tests Performed",sourceKeys:["assaysApplied"]},
+  {key:"rootCauseConclusion",label:"Root Cause Conclusion",sourceKeys:["rootCauseConclusion"]}
+];
+const validationCache = new WeakMap();
+
+function evidenceIndex(raw,candidate="") {
+  const text=cleanBlock(candidate);
+  if (!text || !raw) return -1;
+  const lower=raw.toLowerCase();
+  const options=[text,text.slice(0,90)];
+  const id=text.match(/(?:Comp\s*-\s*)?\d{6,}/i)?.[0];
+  if (id) options.push(id.replace(/\s/g,""),id.replace(/[^0-9]/g,""));
+  const keyWords=text.match(/[A-Za-z]{5,}/g)||[];
+  if (keyWords.length) options.push(keyWords.slice(0,3).join(" "),keyWords[0]);
+  for (const option of options.map(value=>String(value||"").trim()).filter(value=>value.length>=3)) {
+    const index=lower.indexOf(option.toLowerCase());
+    if (index>=0) return index;
+  }
+  return -1;
+}
+
+function sourceEvidenceAt(raw,index) {
+  if (index<0 || !raw) return {page:"—",snippet:"No matching source sentence found."};
+  const pageMatches=[...raw.slice(0,index).matchAll(/--- Page (\d+) ---/g)];
+  const page=pageMatches.length?`p. ${pageMatches.at(-1)[1]}`:"Source text";
+  const start=Math.max(0,index-110), end=Math.min(raw.length,index+230);
+  const snippet=cleanBlock(raw.slice(start,end)).replace(/^.*?--- Page \d+ ---\s*/,"");
+  return {page,snippet};
+}
+
+function validateRecord(record) {
+  const signature=VALIDATION_FIELDS.map(field=>record[field.key]||"").join("\u241f")+`\u241f${record.warnings||""}\u241f${record.rawText?.length||0}`;
+  const cached=validationCache.get(record);
+  if (cached?.signature===signature) return cached.result;
+  const raw=String(record.rawText||"");
+  const fields=VALIDATION_FIELDS.map(definition=>{
+    const value=String(record[definition.key]||"").trim();
+    if (!value) return {...definition,value:"",confidence:"Review",page:"—",snippet:definition.required?"Required information is missing.":"Not reported."};
+    const directIndex=evidenceIndex(raw,value);
+    if (directIndex>=0) return {...definition,value,confidence:"High",...sourceEvidenceAt(raw,directIndex)};
+    for (const sourceKey of definition.sourceKeys||[]) {
+      const sourceValue=String(record[sourceKey]||"").trim();
+      const sourceIndex=evidenceIndex(raw,sourceValue);
+      if (sourceIndex>=0) return {...definition,value,confidence:"Medium",...sourceEvidenceAt(raw,sourceIndex)};
+    }
+    if (definition.key==="customerCompany" && evidenceIndex(record.sourceFile,value.split(",")[0])>=0) {
+      return {...definition,value,confidence:"Medium",page:"File name",snippet:record.sourceFile};
+    }
+    return {...definition,value,confidence:"Review",page:"—",snippet:"Value may be normalized, derived or manually edited; verify against the report."};
+  });
+  const issues=[];
+  for (const field of fields) if (field.required && !field.value) issues.push(`${field.label} is missing`);
+  const registered=parseFlexibleDate(record.complaintRegisteredDate), reported=parseFlexibleDate(record.reportDate);
+  if (registered&&reported&&reported<registered) issues.push("Report date is earlier than the registered date");
+  for (const warning of String(record.warnings||"").split(/;\s*/).filter(Boolean)) if (!issues.includes(warning)) issues.push(warning);
+  const result={fields,issues,complete:fields.filter(field=>field.required&&field.value).length,required:fields.filter(field=>field.required).length};
+  validationCache.set(record,{signature,result});
+  return result;
+}
+
+function renderValidationPanel() {
+  const reviewed=records.map(validateRecord);
+  const totalFields=reviewed.reduce((sum,item)=>sum+item.fields.length,0);
+  const high=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="High").length,0);
+  const medium=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="Medium").length,0);
+  const review=totalFields-high-medium;
+  return `<section id="validationPanel" class="validation-panel"><div class="validation-title"><div><strong>Extraction validation &amp; source evidence</strong><span>Check report page and source text before export.</span></div>
+    <div class="validation-counts"><span class="confidence-high">High ${high}</span><span class="confidence-medium">Medium ${medium}</span><span class="confidence-review">Review ${review}</span></div></div>
+    <div class="validation-cases">${records.map((record,index)=>{
+      const result=reviewed[index];
+      const title=record.complaintNo||record.sourceFile||`Complaint ${index+1}`;
+      return `<details class="validation-case"><summary><span>${esc(title)}</span><span>${result.complete}/${result.required} required fields · ${result.issues.length} note${result.issues.length===1?"":"s"}</span></summary>
+        ${result.issues.length?`<ul class="validation-issues">${result.issues.map(issue=>`<li>${esc(issue)}</li>`).join("")}</ul>`:`<p class="validation-ok">All required fields are present.</p>`}
+        <div class="table-scroll"><table class="validation-evidence-table"><thead><tr><th>Field</th><th>Confidence</th><th>Extracted value</th><th>Page</th><th>Source evidence</th></tr></thead><tbody>
+          ${result.fields.map(field=>`<tr><td data-label="Field">${esc(field.label)}</td><td data-label="Confidence"><span class="confidence-${field.confidence.toLowerCase()}">${field.confidence}</span></td><td data-label="Extracted value">${esc(field.value||"Missing")}</td><td data-label="Page">${esc(field.page)}</td><td data-label="Source evidence">${esc(field.snippet)}</td></tr>`).join("")}
+        </tbody></table></div></details>`;
+    }).join("")}</div></section>`;
+}
+
+function refreshValidationPanel() {
+  const current=$("validationPanel");
+  if (current) current.outerHTML=renderValidationPanel();
+}
+
 function structuredTestEvidenceText(record) {
   const tests=record.testEvidence||[];
   if (!tests.length) return record.assaysApplied?`Tests performed: ${record.assaysApplied}`:"No structured test evidence extracted.";
@@ -1254,17 +1369,18 @@ function prepareRecordForReview(record) {
 function organizedReviewCell(record,index,definition) {
   const [key,label,type="text"]=definition;
   const fieldClass=` field-${key}`;
-  if (type==="evidence") return `<td class="organized-cell evidence-column${fieldClass}"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
+  const dataLabel=` data-label="${esc(label)}"`;
+  if (type==="evidence") return `<td${dataLabel} class="organized-cell evidence-column${fieldClass}"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
   let value=record[key]||"";
   if (type==="date") value=isoDate(value);
   if (type==="select") {
     const options=CATEGORY_SHEETS.map(group=>`<option value="${esc(group)}"${group===value?" selected":""}>${esc(group)}</option>`).join("");
-    return `<td class="organized-cell${fieldClass}"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
+    return `<td${dataLabel} class="organized-cell${fieldClass}"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
   }
-  if (type==="compact") return `<td class="organized-cell compact-column${fieldClass}"><textarea rows="1" class="compact-wrap" aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
-  if (type==="long") return `<td class="organized-cell long-column${fieldClass}"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
+  if (type==="compact") return `<td${dataLabel} class="organized-cell compact-column${fieldClass}"><textarea rows="1" class="compact-wrap" aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
+  if (type==="long") return `<td${dataLabel} class="organized-cell long-column${fieldClass}"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
   const cls=type==="wide"?" wide-column":"";
-  return `<td class="organized-cell${cls}${fieldClass}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
+  return `<td${dataLabel} class="organized-cell${cls}${fieldClass}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
 }
 
 function renderStructuredEvidenceReview() {
@@ -1281,7 +1397,7 @@ function renderStructuredEvidenceReview() {
     if (kind==="sharedDetails") {
       if (item.testIndex>0) return "";
       const sharedFields=[["complaintNo","Complaint"],["lot","Lot"],["customerCompany","Customer"]];
-      return `<td rowspan="${item.record.testEvidence.length}" class="evidence-case-cell"><div class="evidence-case-stack">
+      return `<td data-label="Complaint Details" rowspan="${item.record.testEvidence.length}" class="evidence-case-cell"><div class="evidence-case-stack">
         ${sharedFields.map(([sharedKey,sharedLabel])=>`<label><span>${esc(sharedLabel)}</span><input aria-label="${esc(sharedLabel)} for evidence rows" data-record-index="${item.recordIndex}" data-evidence-shared="${sharedKey}" value="${esc(item.record[sharedKey]||"")}"></label>`).join("")}
       </div></td>`;
     }
@@ -1290,12 +1406,12 @@ function renderStructuredEvidenceReview() {
     const attrs=`data-record-index="${item.recordIndex}" ${kind==="shared"?`data-evidence-shared="${key}"`:`data-test-index="${item.testIndex}" data-test-field="${key}"`}`;
     const rowspan=kind==="shared"?` rowspan="${item.record.testEvidence.length}"`:"";
     return type==="long"
-      ?`<td${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
-      :`<td${rowspan}><input aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs} value="${esc(value)}"></td>`;
+      ?`<td data-label="${esc(label)}"${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
+      :`<td data-label="${esc(label)}"${rowspan}><input aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs} value="${esc(value)}"></td>`;
   };
   return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} editable test row${rows.length===1?"":"s"}</span></div>
     ${rows.length?`<div class="table-scroll"><table class="structured-evidence-table"><thead><tr>${fields.map(([, ,label])=>`<th>${esc(label)}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map(item=>`<tr class="case-tone-${item.recordIndex%4}">${fields.map(definition=>cell(item,definition)).join("")}</tr>`).join("")}</tbody></table></div>`
+      ${rows.map(item=>`<tr class="case-tone-${item.recordIndex%4}"><td class="mobile-evidence-case" data-label="Complaint">${esc(item.record.complaintNo||"Unnumbered complaint")} · Lot ${esc(item.record.lot||"—")} · ${esc(item.record.customerCompany||"Customer not extracted")}</td>${fields.map(definition=>cell(item,definition)).join("")}</tr>`).join("")}</tbody></table></div>`
       :`<p class="hint">No structured test evidence was extracted for the current complaints.</p>`}</section>`;
 }
 
@@ -1308,14 +1424,14 @@ function renderRecords() {
     renderLotsTable();
     return;
   }
-  target.innerHTML=`<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
+  target.innerHTML=`${renderValidationPanel()}<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
     <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><colgroup>
       ${tab.fields.map(([key])=>`<col class="field-${key}">`).join("")}<col class="field-action">
     </colgroup><thead><tr>
       ${tab.fields.map(([key,label])=>`<th class="field-${key}">${organizedHeaderHtml(label)}</th>`).join("")}<th>Action<br>&nbsp;</th>
     </tr></thead><tbody>${records.map((record,index)=>`<tr class="case-tone-${index%4}" data-record-row data-index="${index}">
       ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
-      <td class="organized-action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
+      <td class="organized-action" data-label="Action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
     </tr>`).join("")}</tbody></table></div>${activeReviewTab==="evidence"?renderStructuredEvidenceReview():""}`;
   target.querySelectorAll("textarea.compact-wrap").forEach(textarea=>{
     const fit=()=>{
@@ -1337,6 +1453,7 @@ function renderRecords() {
   target.querySelectorAll("[data-field],[data-evidence-shared],[data-test-field]").forEach(input=>{
     input.addEventListener("change",()=>{
       syncRecordsFromDom();
+      refreshValidationPanel();
       renderLotsTable();
     });
   });
@@ -2653,36 +2770,139 @@ $("summarySourceFiles").addEventListener("change", async e=>{
   $("summaryExcelStatus").textContent=`Selected ${summarySources.length} summary source file(s) (${added} newly added)${failed?`; ${failed} file(s) were unavailable`:""}. Choose more files or create the summary.`;
 });
 
+const DUPLICATE_COMPARE_FIELDS = [
+  ["lot","Lot Number"],["customerCompany","Customer"],["materialNo","Material No."],
+  ["membraneType","Membrane Type"],["resultStatus","Final Result / Status"],
+  ["standardizedSymptoms","Standardized Symptom(s)"],["customerReportedFailure","Customer Reported Failure"],
+  ["assaysApplied","Tests Performed"],["mrfrAreas","MR-FR Area(s)"],
+  ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"],
+  ["rootCauseConclusion","Conclusion of Root Cause Analysis"],["reportDate","Report Date"]
+];
+
+function duplicateFieldChanges(existing,incoming) {
+  return DUPLICATE_COMPARE_FIELDS.filter(([key])=>String(existing[key]||"").trim()!==String(incoming[key]||"").trim());
+}
+
+function renderDuplicateReview() {
+  const target=$("duplicateReview");
+  if (!pendingDuplicateConflicts.length) {
+    target.hidden=true;
+    target.innerHTML="";
+    return;
+  }
+  target.hidden=false;
+  target.innerHTML=`<div class="duplicate-review-heading"><div><strong>Review repeated complaint numbers</strong><span>Existing data has not been replaced yet.</span></div>
+    <button id="applyDuplicateBtn" type="button" class="primary">Apply duplicate choices</button></div>
+    ${pendingDuplicateConflicts.map((conflict,index)=>{
+      const changes=duplicateFieldChanges(conflict.existing,conflict.incoming);
+      const complaint=conflict.incoming.complaintNo||conflict.existing.complaintNo||`Duplicate ${index+1}`;
+      return `<section class="duplicate-card"><div class="duplicate-card-title"><strong>${esc(complaint)}</strong><label>Decision
+        <select data-duplicate-choice="${index}"><option value="incoming" selected>Use new report</option><option value="existing">Keep current reviewed data</option></select>
+      </label></div>${changes.length?`<div class="table-scroll"><table class="duplicate-diff-table"><thead><tr><th>Changed field</th><th>Current data</th><th>New report</th></tr></thead><tbody>
+        ${changes.map(([key,label])=>`<tr><td data-label="Changed field">${esc(label)}</td><td data-label="Current data">${esc(conflict.existing[key]||"")}</td><td data-label="New report">${esc(conflict.incoming[key]||"")}</td></tr>`).join("")}
+      </tbody></table></div>`:`<p class="hint">No compared field values changed.</p>`}</section>`;
+    }).join("")}`;
+  $("applyDuplicateBtn").onclick=()=>{
+    syncRecordsFromDom();
+    let replaced=0,kept=0;
+    pendingDuplicateConflicts.forEach((conflict,index)=>{
+      const decision=target.querySelector(`[data-duplicate-choice="${index}"]`)?.value||"existing";
+      if (decision==="incoming") {
+        const currentIndex=matchingRecordIndex(conflict.existing);
+        if (currentIndex>=0) records[currentIndex]=conflict.incoming;
+        else records.push(conflict.incoming);
+        replaced++;
+      } else kept++;
+    });
+    pendingDuplicateConflicts=[];
+    summaryDataset=[];
+    renderDuplicateReview();
+    renderRecords();
+    $("extractStatus").className="status good";
+    $("extractStatus").textContent=`Duplicate review applied: ${replaced} updated, ${kept} kept unchanged.`;
+  };
+}
+
+function extractionErrorRecord(name,error) {
+  return {
+    sourceFile:name, sourceType:"", sourceGroup:"Final Reports",
+    complaintNo:"", reportDate:"", customerCompany:"", rollsImplicated:"", samplesReceived:"",
+    sampleDetails:"", materialNo:"", productDescription:"", productFamily:"",
+    lot:"", membraneType:"", zones:"", mrfrCombined:"", standardizedSymptoms:"", problemTypes:"", lfaRelevance:"",
+    complaintRegisteredDate:"", daysToReport:"", formalProblem:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
+    finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
+    coordinator:"", similarEvents:"", containmentNecessary:"", correctiveActionNecessary:"",
+    rootCauseConclusion:"", problemValidation:"", finalAssessment:"", finalScope:"", testEvidence:[],
+    warnings:`Extraction error: ${error.message}`, rawText:""
+  };
+}
+
+$("cancelExtractBtn").onclick=()=>{
+  extractionCancelled=true;
+  $("cancelExtractBtn").disabled=true;
+  $("extractQueueStatus").textContent="Stopping safely after the current page...";
+};
+
 $("extractBtn").onclick=async()=>{
-  const files=$("complaintFiles").files;
+  const files=[...($("complaintFiles").files||[])];
   if (!files?.length) return;
   syncRecordsFromDom();
+  extractionRunning=true;
+  extractionCancelled=false;
+  pendingDuplicateConflicts=[];
+  renderDuplicateReview();
+  $("extractBtn").disabled=true;
+  $("cancelExtractBtn").hidden=false;
+  $("cancelExtractBtn").disabled=false;
+  $("extractProgressWrap").hidden=false;
+  $("extractProgress").value=0;
   $("extractStatus").className="status";
-  $("extractStatus").textContent="Extracting...";
+  $("extractStatus").textContent="Preparing local extraction...";
+  const newRecords=[];
+  let failed=0,processed=0,cancelled=false,fatalError=null;
   try {
-    const expanded=await expandFiles(files);
-    const newRecords=[];
-    for (const f of expanded) {
-      try { newRecords.push(...await extractMany(f.name,f.buffer)); }
-      catch(err) {
-        newRecords.push({
-          sourceFile:f.name, sourceType:"", sourceGroup:"Final Reports",
-          complaintNo:"", reportDate:"", customerCompany:"", rollsImplicated:"", samplesReceived:"",
-          sampleDetails:"", materialNo:"", productDescription:"", productFamily:"",
-          lot:"", membraneType:"", zones:"", mrfrCombined:"", standardizedSymptoms:"", problemTypes:"", lfaRelevance:"",
-          complaintRegisteredDate:"", daysToReport:"", formalProblem:"", problem:"", customerReportedFailure:"", assaysApplied:"", resultStatus:"", criticality:"", masterRolls:"",
-          finalRolls:"", mrfrAreas:"", failureReproduced:"", rootCauseRelated:"",
-          coordinator:"", similarEvents:"", containmentNecessary:"", correctiveActionNecessary:"",
-          rootCauseConclusion:"", problemValidation:"", finalAssessment:"", finalScope:"", testEvidence:[],
-          warnings:`Extraction error: ${err.message}`, rawText:""
-        });
+    for (let fileIndex=0;fileIndex<files.length;fileIndex++) {
+      assertExtractionActive();
+      const file=files[fileIndex];
+      $("extractQueueStatus").textContent=`Opening ${fileIndex+1} of ${files.length}: ${file.name}`;
+      const expanded=await expandFiles([file]);
+      for (let itemIndex=0;itemIndex<expanded.length;itemIndex++) {
+        assertExtractionActive();
+        const item=expanded[itemIndex];
+        $("extractQueueStatus").textContent=`Processing ${fileIndex+1} of ${files.length}: ${item.name}`;
+        try {
+          newRecords.push(...await extractMany(item.name,item.buffer));
+        } catch(err) {
+          if (err.name==="AbortError") throw err;
+          newRecords.push(extractionErrorRecord(item.name,err));
+          failed++;
+        }
+        processed++;
+        $("extractProgress").value=Math.round(((fileIndex+(itemIndex+1)/Math.max(expanded.length,1))/files.length)*100);
+        await yieldToBrowser();
       }
     }
+  } catch(err) {
+    if (err.name==="AbortError") cancelled=true;
+    else {
+      fatalError=err;
+      $("extractStatus").className="status bad";
+      $("extractStatus").textContent=err.message;
+    }
+  } finally {
+    extractionRunning=false;
+    $("extractBtn").disabled=false;
+    $("cancelExtractBtn").hidden=true;
+    $("cancelExtractBtn").disabled=false;
+  }
+  try {
     let added=0, updated=0;
     for (const record of newRecords) {
       const existingIndex=matchingRecordIndex(record);
       if (existingIndex>=0) {
-        records[existingIndex]=record;
+        const prior=pendingDuplicateConflicts.find(conflict=>conflict.existingIndex===existingIndex);
+        if (prior) prior.incoming=record;
+        else pendingDuplicateConflicts.push({existingIndex,existing:structuredClone(records[existingIndex]),incoming:record});
         updated++;
       } else {
         records.push(record);
@@ -2690,12 +2910,18 @@ $("extractBtn").onclick=async()=>{
       }
     }
     renderRecords();
+    renderDuplicateReview();
     $("complaintFiles").value="";
-    $("extractStatus").className="status good";
+    if (!cancelled&&!fatalError) $("extractProgress").value=100;
+    $("extractStatus").className=failed||fatalError?"status bad":"status good";
     const parts=[];
     if (added) parts.push(`added ${added}`);
-    if (updated) parts.push(`updated ${updated}`);
-    $("extractStatus").textContent=`Extraction complete: ${parts.join(", ")}. Existing complaints were kept.`;
+    if (updated) parts.push(`${pendingDuplicateConflicts.length} repeated complaint${pendingDuplicateConflicts.length===1?"":"s"} awaiting review`);
+    if (failed) parts.push(`${failed} failed`);
+    if (fatalError) parts.push(fatalError.message);
+    if (cancelled) parts.push("cancelled safely");
+    $("extractQueueStatus").textContent=`${processed} report${processed===1?"":"s"} processed${cancelled?" before cancellation":""}.`;
+    $("extractStatus").textContent=`Extraction ${cancelled?"stopped":fatalError?"ended with an error":"complete"}: ${parts.join(", ")||"no supported reports found"}.`;
   } catch(err) {
     $("extractStatus").className="status bad";
     $("extractStatus").textContent=err.message;
@@ -2717,6 +2943,8 @@ $("saveDraftBtn").onclick=async()=>{
 
 $("clearBtn").onclick=async()=>{
   records=[];
+  pendingDuplicateConflicts=[];
+  renderDuplicateReview();
   collapsedRecords.clear();
   renderRecords();
   try { await deleteTemporaryDraft(); } catch (_) {}
@@ -2741,6 +2969,12 @@ $("historyBtn").onclick=async()=>{
 };
 
 $("buildBtn").onclick=async()=>{
+  if (pendingDuplicateConflicts.length) {
+    $("buildStatus").className="status bad";
+    $("buildStatus").textContent="Review and apply the repeated complaint choices before creating Excel.";
+    $("duplicateReview").scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
   $("buildStatus").className="status";
   $("buildStatus").textContent="Building workbook...";
   try {
@@ -3199,5 +3433,7 @@ window.__reportExtractionDebug = {
     columns:currentReviewProfile().columns.map(column=>({...column,selected:(reviewSelections.get(currentReviewProfile().name)||new Set()).has(column.id)}))
   }),
   collectComplaintDataset,
-  parseRecord
+  parseRecord,
+  validateRecord: record=>structuredClone(validateRecord(record)),
+  duplicateFieldChanges: (current,incoming)=>duplicateFieldChanges(current,incoming).map(change=>({...change}))
 };
