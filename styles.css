@@ -188,6 +188,16 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table.review-overview th:nth-child(9) { width:8%; }
 .organized-review-table.review-overview th:nth-child(10) { width:10%; }
 .organized-review-table.review-overview th:nth-child(11) { width:7%; }
+.organized-review-table.review-investigation { min-width:1640px; }
+.organized-review-table.review-investigation col.field-standardizedSymptoms { width:170px; }
+.organized-review-table.review-investigation col.field-customerReportedFailure { width:300px; }
+.organized-review-table.review-investigation col.field-assaysApplied { width:260px; }
+.organized-review-table.review-investigation col.field-mrfrAreas { width:160px; }
+.organized-review-table.review-investigation col.field-rollsImplicated { width:95px; }
+.organized-review-table.review-investigation col.field-samplesReceived { width:110px; }
+.organized-review-table.review-investigation .organized-cell input,
+.organized-review-table.review-investigation .organized-cell select,
+.organized-review-table.review-investigation .organized-cell textarea { min-width:0; max-width:100%; display:block; }
 .organized-review-table .evidence-column { min-width:540px; }
 .structured-evidence-text { max-height:240px; overflow:auto; white-space:normal; line-height:1.45; color:#334155; }
 .structured-evidence-section { margin-top:22px; padding-top:16px; border-top:1px solid #dfe5ec; }

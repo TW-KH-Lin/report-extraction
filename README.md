@@ -115,6 +115,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Manual review/edit before export
 - Matching Complaint Number, Lot Number and Customer column widths across all three review tabs
 - Compact two-line headers across all three review tables
+- Contained investigation fields with narrow Rolls Implicated and Samples Received columns
 - Lot-history lookup in the uploaded Excel and current extraction
 - Unique complaint count for the same lot
 - Symptom-frequency summary without double-counting complaints repeated across workbook sheets
