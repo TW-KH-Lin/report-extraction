@@ -2619,7 +2619,6 @@ $("buildBtn").onclick=async()=>{
 };
 
 const ROLL_PLAN_REFERENCE = {
-  "Sheet1":{guide:true},
   "ZM17_20mm":{machine:"ZM17",slitWidth:"20 mm",masterWidth:"1580 mm",sectionWidth:"780 mm",slots:76,zoneStarts:[0,13,25,38,51,63]},
   "ZM17_25mm":{machine:"ZM17",slitWidth:"25 mm",masterWidth:"1580 mm",sectionWidth:"780 mm",slots:60,zoneStarts:[0,10,20,30,40,50]},
   "ZM9_18mm":{machine:"ZM9",slitWidth:"18 mm",masterWidth:"1200 mm",sectionWidth:"360 mm",slots:57,zoneStarts:[0,10,19,29,38,48]},
@@ -2637,25 +2636,12 @@ function zoneForSlot(spec,slotIndex) {
 
 function renderRollPlanSheet() {
   const name=$("rollPlanSheet").value;
-  const spec=ROLL_PLAN_REFERENCE[name]||ROLL_PLAN_REFERENCE.Sheet1;
+  const spec=ROLL_PLAN_REFERENCE[name]||Object.values(ROLL_PLAN_REFERENCE)[0];
   $("rollPlanHeading").textContent=name;
-  if (spec.guide) {
-    $("rollPlanTable").innerHTML=`<div class="roll-plan-guide">
-      <h3>How to read the reference plan</h3>
-      <table><thead><tr><th>Item</th><th>Meaning</th></tr></thead><tbody>
-        <tr><td>Machine</td><td>Master-roll production machine.</td></tr>
-        <tr><td>Slit width</td><td>Width of each planned final roll.</td></tr>
-        <tr><td>Master roll (M1–M50)</td><td>Reference row for the source master roll.</td></tr>
-        <tr><td>Final-roll position</td><td>Numbered position across the master-roll width.</td></tr>
-        <tr><td>Zone</td><td>Position group across the width, shown with alternating colors.</td></tr>
-      </tbody></table>
-      <p class="hint">This is a structural reference only. It contains no production assignments or values from the supplied workbook.</p>
-    </div>`;
-    $("rollPlanStatus").className="status good";
-    $("rollPlanStatus").textContent="Reference guide displayed. Choose a ZM worksheet to view its complete 50-master-roll layout.";
-    return;
-  }
-  const zoneHeader=Array.from({length:spec.slots},(_,index)=>`<th class="plan-zone zone-${zoneForSlot(spec,index)}">${spec.zoneStarts.includes(index)?`Zone ${zoneForSlot(spec,index)}`:""}</th>`).join("");
+  const zoneHeader=spec.zoneStarts.map((start,index)=>{
+    const end=spec.zoneStarts[index+1]??spec.slots;
+    return `<th class="plan-zone zone-${index+1}" colspan="${end-start}">Zone ${index+1}</th>`;
+  }).join("");
   const slotHeader=Array.from({length:spec.slots},(_,index)=>`<th class="plan-slot zone-${zoneForSlot(spec,index)}">${index+1}</th>`).join("");
   const rows=Array.from({length:50},(_,masterIndex)=>`<tr><th class="plan-master">M${masterIndex+1}</th>${Array.from({length:spec.slots},(_,slotIndex)=>`<td class="plan-position zone-${zoneForSlot(spec,slotIndex)}" title="M${masterIndex+1} · final-roll position ${slotIndex+1} · Zone ${zoneForSlot(spec,slotIndex)}"></td>`).join("")}</tr>`).join("");
   $("rollPlanTable").innerHTML=`<div class="roll-plan-meta">

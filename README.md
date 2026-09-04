@@ -73,7 +73,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Additional linked Quick Search in the order: end customer, membrane type, complaint number
 - Quick Search complaint-number choices show the associated end-customer name beside each number
 - Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
-- Built-in, read-only Master–Final Roll Plan reference with a worksheet dropdown, 50 master-roll rows, final-roll positions and colored zones
+- Built-in, read-only Master–Final Roll Plan reference with seven ZM worksheet choices, 50 master-roll rows, final-roll positions and colored zones
 - Workbook summary and search also include reports currently extracted in the browser
 - Complaint number
 - Complaint registered date, report date and elapsed days

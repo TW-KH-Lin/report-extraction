@@ -172,14 +172,14 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .roll-plan-meta { display:flex; flex-wrap:wrap; gap:9px; margin:8px 0 12px; }
 .roll-plan-meta span { display:flex; flex-direction:column; gap:2px; min-width:130px; padding:9px 11px; border:1px solid #dfe5ec; border-radius:8px; background:#f8fafc; }
 .roll-plan-meta strong { color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
-.roll-plan-grid-scroll { max-height:70vh; overflow:auto; border:1px solid #cfd9e6; border-radius:9px; }
-.roll-plan-table { width:max-content; min-width:100%; margin:0; table-layout:fixed; }
-.roll-plan-table th, .roll-plan-table td { min-width:34px; width:34px; height:27px; padding:3px; text-align:center; white-space:nowrap; }
+.roll-plan-grid-scroll { max-height:70vh; overflow-y:auto; overflow-x:hidden; border:1px solid #cfd9e6; border-radius:9px; }
+.roll-plan-table { width:100%; min-width:0; margin:0; table-layout:fixed; }
+.roll-plan-table th, .roll-plan-table td { min-width:0; width:auto; height:25px; padding:1px; text-align:center; white-space:nowrap; font-size:clamp(6px,.66vw,10px); }
 .roll-plan-table thead tr:first-child th { top:0; z-index:5; height:30px; }
 .roll-plan-table thead tr:nth-child(2) th { top:30px; z-index:5; }
-.roll-plan-table .plan-master { position:sticky; left:0; min-width:118px; width:118px; z-index:6; background:#17365d; color:white; }
+.roll-plan-table .plan-master { position:sticky; left:0; min-width:74px; width:74px; z-index:6; background:#17365d; color:white; font-size:11px; }
 .roll-plan-table .plan-sticky-corner { z-index:7; }
-.roll-plan-table .plan-zone { color:#17365d; font-size:11px; font-weight:800; border-bottom:1px solid #9fb0c2; }
+.roll-plan-table .plan-zone { color:#17365d; font-size:10px; font-weight:800; border-bottom:1px solid #9fb0c2; }
 .roll-plan-table .plan-slot { color:#17365d; font-weight:750; }
 .roll-plan-table .plan-position { background:#fff; }
 .roll-plan-table .zone-1, .roll-plan-table td.zone-1 { background:#eef6ff; }
