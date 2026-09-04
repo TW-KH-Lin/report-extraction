@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=17" />
+  <link rel="stylesheet" href="./styles.css?v=19" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -150,7 +150,7 @@
         <h2>Quick Search</h2>
         <div class="search-section first">
         <h3>Find a lot or complaint</h3>
-        <p class="hint">Choose lot or complaint, select a product family if needed, then choose a number. Every number also shows its associated end customer.</p>
+        <p class="hint">Choose lot or complaint, select a product family if needed, then choose a number. Every number also shows its associated customer.</p>
         <div class="search-controls">
           <select id="directSearchType" aria-label="Search field">
             <option value="lot">Lot</option>
@@ -175,10 +175,10 @@
 
         <div class="search-section">
         <h3>Find a customer complaint</h3>
-        <p class="hint">Choose in this order: end customer → membrane type → complaint number. The result includes the related lot and full complaint information.</p>
+        <p class="hint">Choose in this order: customer → membrane type → complaint number. The result includes the related lot and full complaint information.</p>
         <div class="search-controls">
           <select id="searchCustomer" aria-label="End customer">
-            <option value="">Choose end customer</option>
+            <option value="">Choose customer</option>
           </select>
           <select id="searchFamily" aria-label="Membrane type" disabled>
             <option value="">Choose membrane type</option>
@@ -247,6 +247,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=40"></script>
+  <script type="module" src="./app.js?v=44"></script>
 </body>
 </html>

@@ -156,23 +156,32 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table input, .organized-review-table select, .organized-review-table textarea { width:100%; min-width:140px; }
 .organized-review-table textarea { min-width:360px; min-height:118px; resize:vertical; }
 .organized-review-table .wide-column input { min-width:260px; }
+.organized-review-table .field-complaintNo { width:150px; min-width:150px; max-width:150px; }
+.organized-review-table .field-lot { width:105px; min-width:105px; max-width:105px; }
+.organized-review-table .field-customerCompany { width:210px; min-width:210px; max-width:210px; }
+.organized-review-table tr.case-tone-0 > td, .structured-evidence-table tr.case-tone-0 > td { background:#eef6ff; }
+.organized-review-table tr.case-tone-1 > td, .structured-evidence-table tr.case-tone-1 > td { background:#fff7e8; }
+.organized-review-table tr.case-tone-2 > td, .structured-evidence-table tr.case-tone-2 > td { background:#eef9f1; }
+.organized-review-table tr.case-tone-3 > td, .structured-evidence-table tr.case-tone-3 > td { background:#f8f1fb; }
+.organized-review-table tr[class*="case-tone-"] input, .organized-review-table tr[class*="case-tone-"] select,
+.organized-review-table tr[class*="case-tone-"] textarea, .structured-evidence-table tr[class*="case-tone-"] input,
+.structured-evidence-table tr[class*="case-tone-"] textarea { background:rgba(255,255,255,.78); }
 .organized-review-table.review-overview { min-width:1040px; table-layout:fixed; }
 .organized-review-table.review-overview th { white-space:normal; line-height:1.15; padding:6px 4px; }
 .organized-review-table.review-overview td { padding:4px; }
 .organized-review-table.review-overview input, .organized-review-table.review-overview select { min-width:0; padding:5px 6px; font-size:12px; }
 .organized-review-table.review-overview textarea.compact-wrap { min-width:0; min-height:32px; padding:5px 6px; overflow:hidden; resize:vertical; font-size:12px; line-height:1.25; }
 .organized-review-table.review-overview .wide-column input { min-width:0; }
-.organized-review-table.review-overview th:nth-child(1) { width:9%; }
-.organized-review-table.review-overview th:nth-child(2) { width:10%; }
-.organized-review-table.review-overview th:nth-child(3) { width:7%; }
-.organized-review-table.review-overview th:nth-child(4) { width:14%; }
-.organized-review-table.review-overview th:nth-child(5) { width:10%; }
-.organized-review-table.review-overview th:nth-child(6) { width:14%; }
-.organized-review-table.review-overview th:nth-child(7), .organized-review-table.review-overview th:nth-child(8) { width:9%; }
-.organized-review-table.review-overview th:nth-child(9) { width:4%; }
-.organized-review-table.review-overview th:nth-child(10) { width:8%; }
-.organized-review-table.review-overview th:nth-child(11) { width:11%; }
-.organized-review-table.review-overview th:nth-child(12) { width:7%; }
+.organized-review-table.review-overview th:nth-child(1) { width:10%; }
+.organized-review-table.review-overview th:nth-child(2) { width:7%; }
+.organized-review-table.review-overview th:nth-child(3) { width:14%; }
+.organized-review-table.review-overview th:nth-child(4) { width:10%; }
+.organized-review-table.review-overview th:nth-child(5) { width:14%; }
+.organized-review-table.review-overview th:nth-child(6), .organized-review-table.review-overview th:nth-child(7) { width:8%; }
+.organized-review-table.review-overview th:nth-child(8) { width:4%; }
+.organized-review-table.review-overview th:nth-child(9) { width:8%; }
+.organized-review-table.review-overview th:nth-child(10) { width:10%; }
+.organized-review-table.review-overview th:nth-child(11) { width:7%; }
 .organized-review-table .evidence-column { min-width:540px; }
 .structured-evidence-text { max-height:240px; overflow:auto; white-space:normal; line-height:1.45; color:#334155; }
 .structured-evidence-section { margin-top:22px; padding-top:16px; border-top:1px solid #dfe5ec; }
@@ -181,7 +190,7 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .structured-evidence-table td { max-width:340px; padding:5px; white-space:normal; line-height:1.3; vertical-align:top; }
 .structured-evidence-table input, .structured-evidence-table textarea { width:100%; min-width:105px; padding:5px 6px; font-size:12px; line-height:1.3; }
 .structured-evidence-table textarea { min-width:210px; min-height:88px; resize:vertical; }
-.structured-evidence-table .evidence-case-cell { min-width:180px; max-width:220px; background:#f8fafc; }
+.structured-evidence-table .evidence-case-cell { min-width:180px; max-width:220px; }
 .evidence-case-stack { display:grid; gap:7px; position:sticky; top:74px; }
 .evidence-case-stack label { display:grid; gap:2px; }
 .evidence-case-stack label span { color:#64748b; font-size:10px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; }

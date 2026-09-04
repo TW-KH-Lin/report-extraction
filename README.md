@@ -57,10 +57,15 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
 - Review every extracted complaint as one complete editable row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
 - The Complaint overview uses compact two-line headings and narrower columns; longer values wrap and expand so information is not hidden
+- The Complaint overview omits Source Group; records from `Ongoing - Email` display `Ongoing` in Final Result / Status
 - Compact typography is applied consistently across all app tabs
+- Complaint Number, Lot Number and Customer keep the same first-three-column layout in all review tabs
+- Soft alternating case colors make separate complaints easier to follow when switching tabs
+- Customer country codes include `GR` for Greece, `UK` for the United Kingdom and `CA` for Canada
 - End-customer names are standardized to `Key name, City, Country code` where the location can be identified
 - Membrane labels use only the normalized family name, including `CN140ub` for the unbacked CN140 family
 - Structured Test Evidence appears as a compact editable one-test-per-row table; complaint, lot and customer are stacked in one shared details column, and test methods are always formatted as bullet points
+- In-process data review and batch record review are standardized as `IPW review` throughout the app and exported workbooks
 - Click **Save changes** to keep edited review and test-evidence values for the next Excel export
 - Dates in the organized overview use year-month-day format
 - Export the three organized review tabs to separate Excel worksheets
@@ -75,7 +80,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Lot-detail groups use alternating background colors, show product family after the lot, and can be filtered instantly by CN type
 - One-row-per-complaint consolidation when the same complaint appears on several product or category sheets
 - Original Quick Search for lot or complaint number remains available, with optional product-family filtering
-- Additional linked Quick Search in the order: end customer, membrane type, complaint number
+- Additional linked Quick Search in the order: customer, membrane type, complaint number
 - Quick Search complaint-number choices show the associated end-customer name beside each number
 - Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
 - Built-in, read-only Master–Final Roll Plan reference with seven ZM worksheet choices, 50 master-roll rows, final-roll positions and colored zones

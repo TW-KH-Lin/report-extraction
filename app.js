@@ -34,21 +34,21 @@ const EVIDENCE_HEADERS = [
 ];
 const SUMMARY_HEADERS = ["Lot","Complaint Count","Symptom","Symptom Count","Complaint Numbers"];
 const COMPLAINT_SUMMARY_HEADERS = [
-  "Complaint Number","Lot","Product Family","Material No.","Membrane Type","End Customer",
+  "Complaint Number","Lot","Product Family","Material No.","Membrane Type","Customer",
   "Problem","Customer Reported Failure","Standardized Symptom(s)","Problem Type","Tests Performed",
   "Final Result / Status","Rolls Implicated","Samples Received","MR-FR(s)",
   "Registered Date","Report Date","Days","Data Quality / Notes","Source Group"
 ];
 const REVIEW_OVERVIEW_HEADERS = [
-  "Source Group","Complaint Number","Lot Number","End Customer","Final Result / Status",
+  "Complaint Number","Lot Number","Customer","Final Result / Status",
   "Standardized Symptom(s)","Date Registered","Report Date","Days","Membrane Type","Material No."
 ];
 const REVIEW_INVESTIGATION_HEADERS = [
-  "Complaint Number","Lot Number","End Customer","Standardized Symptom(s)","Customer Reported Failure",
+  "Complaint Number","Lot Number","Customer","Standardized Symptom(s)","Customer Reported Failure",
   "Tests Performed","MR-FR Area(s)","Rolls Implicated","Samples Received"
 ];
 const REVIEW_ROOT_CAUSE_HEADERS = [
-  "Complaint Number","Lot Number","End Customer","Standard Test","Sample Source","Sample ID","Purpose","Method",
+  "Complaint Number","Lot Number","Customer","Standard Test","Sample Source","Sample ID","Purpose","Method",
   "Result","Outcome","Within Spec?","Issue Observed?","Source Page","Conditions","Conclusion of Root Cause Analysis"
 ];
 const MANAGED_SHEETS = [
@@ -62,7 +62,7 @@ const SUMMARY_FIELDS = [
   {key:"complaintNo",label:"Complaint Number",essential:true},
   {key:"lot",label:"Lot(s)",essential:true},
   {key:"lotComplaintCount",label:"Complaints Related to Lot",essential:true},
-  {key:"customer",label:"End Customer",essential:true},
+  {key:"customer",label:"Customer",essential:true},
   {key:"productFamily",label:"Product Family",essential:true},
   {key:"materialNo",label:"Material No."},
   {key:"problem",label:"Reason / Problem",essential:true},
@@ -84,7 +84,7 @@ const REVIEW_FIELD_DEFINITIONS = [
   {key:"complaintRegisteredDate",label:"Complaint Registered Date",aliases:["complaint registered date","registered date","registration date"]},
   {key:"reportDate",label:"Report Date",aliases:["final report date","report date","date of sending final report to customer"]},
   {key:"daysToReport",label:"Days",aliases:["days to report","elapsed days","days"]},
-  {key:"customerCompany",label:"End Customer",essential:true,aliases:["customer company","end customer","final customer","customer source label","customer source","customer"]},
+  {key:"customerCompany",label:"Customer",essential:true,aliases:["customer company","end customer","final customer","customer source label","customer source","customer"]},
   {key:"rollsImplicated",label:"Rolls / Units Implicated",aliases:["rolls implicated","number of roll implicated","implicated units","units implicated"]},
   {key:"samplesReceived",label:"Samples Received",aliases:["samples received","sample received","number of sample received"]},
   {key:"sampleDetails",label:"Sample Details",aliases:["sample details","sample source","sample id"]},
@@ -131,7 +131,7 @@ const COMPACT_CN_REVIEW_HEADERS = [
 const BUILT_IN_REVIEW_GROUP_HEADERS = {
   "Complaint Information": [
     "Complaint Number","Lot(s)","Membrane Type","Implicated Units","Sample Received",
-    "Registered Date","Report Date","Days","End Customer","Problem(s)","Result"
+    "Registered Date","Report Date","Days","Customer","Problem(s)","Result"
   ],
   "Complaint Summary": COMPLAINT_SUMMARY_HEADERS,
   "Final Reports": CATEGORY_HEADERS,
@@ -155,7 +155,7 @@ const BUILT_IN_REVIEW_PROFILES = Object.entries(BUILT_IN_REVIEW_GROUP_HEADERS).m
 
 const GENERIC_TEST_RULES = [
   {name:"Visual inspection",re:/\bvisual\s+inspection\b/i,purpose:"Appearance / physical defect review",method:"Inspect customer, retain or reference material and available photographs."},
-  {name:"Batch record review",re:/\b(?:batch|manufacturing|production)\s+(?:record|documentation)\s+review\b|\breview\s+of\s+(?:the\s+)?(?:batch|manufacturing|production)\s+(?:record|documentation)/i,purpose:"Manufacturing history review",method:"Review production, release and in-process records for deviations or relevant trends."},
+  {name:"IPW review",re:/\b(?:batch|manufacturing|production)\s+(?:record|documentation)\s+review\b|\breview\s+of\s+(?:the\s+)?(?:batch|manufacturing|production)\s+(?:record|documentation)/i,purpose:"Manufacturing history review",method:"Review production, release and in-process records for deviations or relevant trends."},
   {name:"Peel strength test",re:/\b(?:peel[- ]test|peel\s+strength\s+(?:test|measurement))\b/i,purpose:"Backing adhesion / peel strength",method:"Measure peel or adhesive strength under the report-defined conditions."},
   {name:"Adhesive strength test",re:/\badhesive\s+strength\s+(?:test|measurement)s?\b/i,purpose:"Backing adhesion",method:"Measure adhesive strength and compare with the applicable internal reference."},
   {name:"Illuminated inspection table",re:/\billuminated\s+inspection\s+table\b/i,purpose:"Surface and structure inspection",method:"Inspect membrane on an illuminated inspection table."},
@@ -379,7 +379,12 @@ const CUSTOMER_LOCATIONS = [
   ["Shanghai","CN",["shanghai","sh"]],["Suzhou","CN",["suzhou"]],
   ["Wuhan","CN",["wuhan"]],["Qingdao","CN",["qingdao"]],
   ["Tokyo","JP",["tokyo"]],["Osaka","JP",["osaka"]],["Seoul","KR",["seoul"]],
-  ["Mumbai","IN",["mumbai"]],["Delhi","IN",["delhi","new delhi"]]
+  ["Mumbai","IN",["mumbai"]],["Delhi","IN",["delhi","new delhi"]],
+  ["Athens","GR",["athens"]],["Thessaloniki","GR",["thessaloniki"]],
+  ["Manchester","UK",["manchester"]],["Birmingham","UK",["birmingham"]],
+  ["Bristol","UK",["bristol"]],["Oxford","UK",["oxford"]],
+  ["Toronto","CA",["toronto"]],["Vancouver","CA",["vancouver"]],
+  ["Montreal","CA",["montreal","montréal"]],["Ottawa","CA",["ottawa"]],["Calgary","CA",["calgary"]]
 ];
 
 function countryCodeFromCustomerText(value="",sourceFile="") {
@@ -387,7 +392,8 @@ function countryCodeFromCustomerText(value="",sourceFile="") {
   const rules=[
     ["US",/\b(?:usa|u\.s\.a|united states|america)\b/],["JP",/\b(?:japan|japanese|jap)\b/],
     ["KR",/\b(?:south korea|korea|korean)\b/],["IN",/\b(?:india|indian)\b/],
-    ["DE",/\b(?:germany|german)\b/],["GB",/\b(?:united kingdom|uk|britain)\b/],
+    ["DE",/\b(?:germany|german)\b/],["UK",/\b(?:united kingdom|uk|britain|british)\b/],
+    ["GR",/\b(?:greece|greek)\b/],["CA",/\b(?:canada|canadian)\b/],
     ["FR",/\b(?:france|french)\b/],["CN",/\b(?:china|chinese|prc)\b/]
   ];
   return rules.find(([,pattern])=>pattern.test(text))?.[0]||"";
@@ -405,13 +411,13 @@ function compactCustomerName(value="",sourceFile="") {
       break;
     }
   }
-  const sourceTag=String(sourceFile).match(/(?:^|[(_-])(USA|US|JAP|JP|KR|IN|DE|UK)(?=[_)-])/i)?.[2]?.toUpperCase()||"";
-  if (!country && sourceTag) country={USA:"US",US:"US",JAP:"JP",JP:"JP",KR:"KR",IN:"IN",DE:"DE",UK:"GB"}[sourceTag]||sourceTag;
+  const sourceTag=String(sourceFile).match(/(?:^|[(_-])(USA|US|JAP|JP|KR|IN|DE|UK|GR|CA)(?=[_)-])/i)?.[2]?.toUpperCase()||"";
+  if (!country && sourceTag) country={USA:"US",US:"US",JAP:"JP",JP:"JP",KR:"KR",IN:"IN",DE:"DE",UK:"UK",GR:"GR",CA:"CA"}[sourceTag]||sourceTag;
   if (!country && city) country=CUSTOMER_LOCATIONS.find(([name])=>name===city)?.[1]||"";
   let key=original
     .replace(/\([^)]*\)/g," ")
-    .replace(/\b(?:hangzhou|xiamen|nanjing|guangzhou|shenzhen|chengdu|chongqing|beijing|shanghai|suzhou|wuhan|qingdao|sichuan|tokyo|osaka|seoul|mumbai|new delhi|delhi)\b/gi," ")
-    .replace(/\b(?:china|chinese|prc|usa|united states|america|japan|japanese|korea|korean|india|indian|germany|german|united kingdom|uk|britain)\b/gi," ")
+    .replace(/\b(?:hangzhou|xiamen|nanjing|guangzhou|shenzhen|chengdu|chongqing|beijing|shanghai|suzhou|wuhan|qingdao|sichuan|tokyo|osaka|seoul|mumbai|new delhi|delhi|athens|thessaloniki|manchester|birmingham|bristol|oxford|toronto|vancouver|montreal|montréal|ottawa|calgary)\b/gi," ")
+    .replace(/\b(?:china|chinese|prc|usa|united states|america|japan|japanese|korea|korean|india|indian|germany|german|united kingdom|uk|britain|british|greece|greek|canada|canadian)\b/gi," ")
     .replace(/\b(?:biopharm(?:aceuticals?)?|biotech(?:nology)?|technology|medical|diagnostics?|diagnostic|healthcare|products?)\b.*$/i,"")
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|company|corporation|corp\.?|inc\.?|llc|gmbh|limited)\b.*$/i,"")
     .replace(/^[,\s-]+|[,\s-]+$/g,"")
@@ -553,7 +559,7 @@ function extractAssays(text) {
   const hasFlowMeasurement = /Capillary\s+Flow\s+Time\s*#|could\s+not\s+be\s+measured\s+against\s+specification/i.test(text);
   const hasInProcessReview = /Review\s+in[- ]process\s+data\s+of\s+capillary\s+flow\s+time/i.test(text);
   if (hasFlowMeasurement) assays.push("Capillary flow time");
-  else if (hasInProcessReview) assays.push("In-process data review");
+  else if (hasInProcessReview) assays.push("IPW review");
   if (/Phenol\s+red\s+(?:buffer\s+)?line\s+test/i.test(text)) assays.push("Phenol red line test");
   if (/Protein\s+(?:binding\s+(?:assay|capacity)|lines?)/i.test(text)) {
     assays.push("Protein binding assay");
@@ -609,7 +615,7 @@ function extractTestEvidence(text) {
     ]);
     tests.push({
       name:/Capillary\s+Flow\s+Time\s*#|could\s+not\s+be\s+measured\s+against\s+specification/i.test(text)
-        ?"Capillary flow time":"In-process data review",
+        ?"Capillary flow time":"IPW review",
       purpose:"Flow performance / specification check",
       sampleSource:"Retain sample",
       sampleId:retainIds,
@@ -1139,8 +1145,8 @@ const ORGANIZED_REVIEW_TABS = {
   overview:{
     label:"Complaint overview",
     fields:[
-      ["sourceGroup","Source Group","select"],["complaintNo","Complaint Number","compact"],["lot","Lot Number"],
-      ["customerCompany","End Customer","compact"],["resultStatus","Final Result / Status","compact"],
+      ["complaintNo","Complaint Number","compact"],["lot","Lot Number"],
+      ["customerCompany","Customer","compact"],["resultStatus","Final Result / Status","compact"],
       ["standardizedSymptoms","Standardized Symptom(s)","compact"],["complaintRegisteredDate","Date Registered","date"],
       ["reportDate","Report Date","date"],["daysToReport","Days"],["membraneType","Membrane Type"],["materialNo","Material No.","compact"]
     ]
@@ -1148,7 +1154,7 @@ const ORGANIZED_REVIEW_TABS = {
   investigation:{
     label:"Complaint investigation",
     fields:[
-      ["complaintNo","Complaint Number"],["lot","Lot Number"],["customerCompany","End Customer","wide"],
+      ["complaintNo","Complaint Number","compact"],["lot","Lot Number"],["customerCompany","Customer","compact"],
       ["standardizedSymptoms","Standardized Symptom(s)","wide"],["customerReportedFailure","Customer Reported Failure","long"],
       ["assaysApplied","Tests Performed","long"],["mrfrAreas","MR-FR Area(s)","wide"],
       ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"]
@@ -1157,15 +1163,15 @@ const ORGANIZED_REVIEW_TABS = {
   evidence:{
     label:"Tests & root cause",
     fields:[
-      ["complaintNo","Complaint Number"],["lot","Lot Number"],["customerCompany","End Customer","wide"],
+      ["complaintNo","Complaint Number","compact"],["lot","Lot Number"],["customerCompany","Customer","compact"],
       ["rootCauseConclusion","Conclusion of Root Cause Analysis","long"]
     ]
   }
 };
 
 const OVERVIEW_HEADER_LINES = {
-  "Source Group":["Source","Group"],"Complaint Number":["Complaint","Number"],"Lot Number":["Lot","Number"],
-  "End Customer":["End","Customer"],"Final Result / Status":["Final Result","/ Status"],
+  "Complaint Number":["Complaint","Number"],"Lot Number":["Lot","Number"],
+  "Customer":["Customer",""],"Final Result / Status":["Final Result","/ Status"],
   "Standardized Symptom(s)":["Standardized","Symptom(s)"],"Date Registered":["Date","Registered"],
   "Report Date":["Report","Date"],"Membrane Type":["Membrane","Type"],"Material No.":["Material","No."]
 };
@@ -1202,6 +1208,16 @@ function testMethodItems(value="") {
     .filter(Boolean);
 }
 
+function canonicalTestName(value="") {
+  const name=String(value||"").replace(/^(?:\s*[•*\-–—]\s*)+/,"").trim();
+  return /^(?:in[-\s]?process(?:\s+data)?\s+review|batch\s+record\s+review)$/i.test(name)?"IPW review":name;
+}
+
+function canonicalTestsText(value="",separator="; ") {
+  const items=String(value||"").split(/\n+|\s*;\s*/).map(canonicalTestName).filter(Boolean);
+  return [...new Set(items)].join(separator);
+}
+
 function testMethodBulletText(value="") {
   return testMethodItems(value).map(item=>`• ${item}`).join("\n");
 }
@@ -1212,7 +1228,7 @@ function testMethodBulletHtml(value="") {
 }
 
 function testsPerformedItems(value="") {
-  return String(value||"").split(/\n+|\s*;\s*/).map(item=>item.replace(/^[•*\-–—]\s*/,"").trim()).filter(Boolean);
+  return String(value||"").split(/\n+|\s*;\s*/).map(canonicalTestName).filter(Boolean);
 }
 
 function testsPerformedBulletText(value="") {
@@ -1220,6 +1236,9 @@ function testsPerformedBulletText(value="") {
 }
 
 function prepareRecordForReview(record) {
+  if (record.sourceGroup==="Ongoing - Email") record.resultStatus="Ongoing";
+  record.customerCompany=String(record.customerCompany||"").replace(/,\s*GB\s*$/i,", UK");
+  for (const test of record.testEvidence||[]) test.name=canonicalTestName(test.name);
   if (record._organizedReviewPrepared) return;
   record.customerCompany=compactCustomerName(record.customerCompany,record.sourceFile);
   record.membraneType=productFamily(record.materialNo)
@@ -1231,17 +1250,18 @@ function prepareRecordForReview(record) {
 
 function organizedReviewCell(record,index,definition) {
   const [key,label,type="text"]=definition;
-  if (type==="evidence") return `<td class="organized-cell evidence-column"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
+  const fieldClass=` field-${key}`;
+  if (type==="evidence") return `<td class="organized-cell evidence-column${fieldClass}"><div class="structured-evidence-text">${esc(structuredTestEvidenceText(record)).replaceAll("\n","<br>")}</div></td>`;
   let value=record[key]||"";
   if (type==="date") value=isoDate(value);
   if (type==="select") {
     const options=CATEGORY_SHEETS.map(group=>`<option value="${esc(group)}"${group===value?" selected":""}>${esc(group)}</option>`).join("");
-    return `<td class="organized-cell"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
+    return `<td class="organized-cell${fieldClass}"><select aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${options}</select></td>`;
   }
-  if (type==="compact") return `<td class="organized-cell compact-column"><textarea rows="1" class="compact-wrap" aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
-  if (type==="long") return `<td class="organized-cell long-column"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
+  if (type==="compact") return `<td class="organized-cell compact-column${fieldClass}"><textarea rows="1" class="compact-wrap" aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
+  if (type==="long") return `<td class="organized-cell long-column${fieldClass}"><textarea aria-label="${esc(label)} for row ${index+1}" data-field="${key}">${esc(value)}</textarea></td>`;
   const cls=type==="wide"?" wide-column":"";
-  return `<td class="organized-cell${cls}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
+  return `<td class="organized-cell${cls}${fieldClass}"><input aria-label="${esc(label)} for row ${index+1}" data-field="${key}" value="${esc(value)}"></td>`;
 }
 
 function renderStructuredEvidenceReview() {
@@ -1272,7 +1292,7 @@ function renderStructuredEvidenceReview() {
   };
   return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} editable test row${rows.length===1?"":"s"}</span></div>
     ${rows.length?`<div class="table-scroll"><table class="structured-evidence-table"><thead><tr>${fields.map(([, ,label])=>`<th>${esc(label)}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map(item=>`<tr>${fields.map(definition=>cell(item,definition)).join("")}</tr>`).join("")}</tbody></table></div>`
+      ${rows.map(item=>`<tr class="case-tone-${item.recordIndex%4}">${fields.map(definition=>cell(item,definition)).join("")}</tr>`).join("")}</tbody></table></div>`
       :`<p class="hint">No structured test evidence was extracted for the current complaints.</p>`}</section>`;
 }
 
@@ -1287,8 +1307,8 @@ function renderRecords() {
   }
   target.innerHTML=`<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
     <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><thead><tr>
-      ${tab.fields.map(([,label])=>`<th>${organizedHeaderHtml(label)}</th>`).join("")}<th>Action</th>
-    </tr></thead><tbody>${records.map((record,index)=>`<tr data-record-row data-index="${index}">
+      ${tab.fields.map(([key,label])=>`<th class="field-${key}">${organizedHeaderHtml(label)}</th>`).join("")}<th>Action</th>
+    </tr></thead><tbody>${records.map((record,index)=>`<tr class="case-tone-${index%4}" data-record-row data-index="${index}">
       ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
       <td class="organized-action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
     </tr>`).join("")}</tbody></table></div>${activeReviewTab==="evidence"?renderStructuredEvidenceReview():""}`;
@@ -1337,7 +1357,9 @@ function syncRecordsFromDom() {
     const recordIndex=Number(input.dataset.recordIndex), testIndex=Number(input.dataset.testIndex);
     const test=records[recordIndex]?.testEvidence?.[testIndex];
     if (!test) return;
-    const value=input.dataset.testField==="method"?testMethodBulletText(input.value):input.value.trim();
+    const value=input.dataset.testField==="method"
+      ?testMethodBulletText(input.value)
+      :input.dataset.testField==="name"?canonicalTestName(input.value):input.value.trim();
     test[input.dataset.testField]=value;
   });
 }
@@ -1765,6 +1787,7 @@ function summaryRowFromObject(row, sourceSheet) {
   for (const [key,aliases] of Object.entries(SUMMARY_ALIASES)) result[key]=valueByAliases(row,aliases);
   result.productFamily=normalizedProductFamily(result.materialNo,result.productFamily);
   result.customer=canonicalCustomerName(result.customer);
+  result.tests=canonicalTestsText(result.tests);
   if (/^claim\s+accepted$/i.test(result.result)) result.result="Confirmed";
   if (/^claim\s+not\s+accepted$/i.test(result.result)) result.result="Not confirmed";
   for (const key of ["registeredDate","reportDate"]) {
@@ -1840,7 +1863,7 @@ function recordToSummaryRow(record) {
     standardizedSymptoms:displayCellValue(category["Standardized Symptom(s)"]),
     problemType:displayCellValue(category["Problem Type"]),
     result:displayCellValue(category["Result / Status"]||category["Final Assessment / Root Cause"]),
-    tests:displayCellValue(category["Tests / Assays Applied"]),
+    tests:canonicalTestsText(displayCellValue(category["Tests / Assays Applied"])),
     rollsImplicated:displayCellValue(category["Rolls Implicated"]),
     samplesReceived:displayCellValue(category["Samples Received"]),
     registeredDate:displayCellValue(category["Complaint Registered Date"]),
@@ -1932,6 +1955,7 @@ async function collectComplaintDataset() {
   dataset.forEach(row=>{
     row.productFamily=normalizedProductFamily(row.materialNo,row.productFamily);
     row.customer=canonicalCustomerName(row.customer);
+    row.tests=canonicalTestsText(row.tests);
     const calculated=daysBetweenDates(row.registeredDate,row.reportDate);
     if (!/^\d+$/.test(String(row.days||"")) && calculated!=="") row.days=String(calculated);
   });
@@ -1977,7 +2001,7 @@ function renderLotOnlyTable(rows) {
   if (!lots.size) return `${filterControls}<p class="status good">No complaint lots match the selected CN types.</p>`;
   const groups=[...lots.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),undefined,{numeric:true}));
   return `${filterControls}<table class="summary-table lot-detail-table"><thead><tr>
-    <th>Lot (complaint count)</th><th>Product Family</th><th>Complaint Number</th><th>End Customer</th><th>Reason / Problem</th><th>Final Result / Status</th>
+    <th>Lot (complaint count)</th><th>Product Family</th><th>Complaint Number</th><th>Customer</th><th>Reason / Problem</th><th>Final Result / Status</th>
   </tr></thead><tbody>${groups.map(([lot,complaints],groupIndex)=>complaints.map((row,index)=>`<tr class="lot-tone-${groupIndex%4}">
     ${index===0?`<td class="lot-group-cell" rowspan="${complaints.length}"><strong>Lot (${complaints.length})</strong><span>${esc(lot)}</span></td>`:""}
     <td class="lot-family-cell">${esc(row.productFamily||"Not specified")}</td>
@@ -2005,7 +2029,7 @@ function renderSummaryMetrics(dataset) {
   $("summaryMetrics").innerHTML=`
     <div class="metric"><strong>${dataset.length}</strong><span>unique complaint${dataset.length===1?"":"s"}</span></div>
     <div class="metric"><strong>${lots.size}</strong><span>complaint lot${lots.size===1?"":"s"}</span></div>
-    <div class="metric"><strong>${customers.size}</strong><span>end customer${customers.size===1?"":"s"}</span></div>
+    <div class="metric"><strong>${customers.size}</strong><span>customer${customers.size===1?"":"s"}</span></div>
     <div class="metric"><strong>${tested}</strong><span>complaint${tested===1?"":"s"} with tests listed</span></div>
     <div class="metric"><strong>${rollTotal}</strong><span>implicated roll${rollTotal===1?"":"s"} recorded</span></div>
     <div class="metric"><strong>${averageDays||"—"}</strong><span>average days to report${numericDays.length?` (${numericDays.length} cases)`:""}</span></div>`;
@@ -2095,7 +2119,7 @@ function formatSheet(ws, hasSource=false) {
     "Standard Test":24,"Standard Purpose":28,"Standard Method":44,"Result (Source)":48,"Outcome":24,
     "Within Spec?":14,"Issue Observed?":16,"Source Page":12,"Case-specific Conditions / Source Detail":42,
     "Complaint Count":18,"Symptom":38,"Symptom Count":16,"Complaint Numbers":42,"Complaint Number":24,
-    "End Customer":28,"Tests Performed":38,"Final Result / Status":22,"Registered Date":18,"Date Registered":18,
+    "Customer":28,"Tests Performed":38,"Final Result / Status":22,"Registered Date":18,"Date Registered":18,
     "Lot Number":15,"Structured Test Evidence":72,"Conclusion of Root Cause Analysis":64,
     "Purpose":28,"Method":44,"Result":48,"Conditions":42,
     "Source File":34
@@ -2195,7 +2219,7 @@ function recordToEvidenceRows(r) {
     "Product Family":fam, "Units Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
     "Problem":r.problem||"", "Customer Reported Failure":r.customerReportedFailure||"",
     "Complaint Status":r.resultStatus||"", "Sample Source":t.sampleSource||"", "Sample ID":t.sampleId||"",
-    "Standard Test":t.name||"", "Standard Purpose":t.purpose||"", "Standard Method":testMethodBulletText(t.method),
+    "Standard Test":canonicalTestName(t.name), "Standard Purpose":t.purpose||"", "Standard Method":testMethodBulletText(t.method),
     "Result (Source)":t.result||"", "Outcome":t.outcome||"", "Within Spec?":t.withinSpec||"",
     "Issue Observed?":t.issueObserved||"", "Source Page":t.sourcePage||"",
     "Case-specific Conditions / Source Detail":t.conditions||"", "Source File":r.sourceFile||""
@@ -2205,11 +2229,10 @@ function recordToEvidenceRows(r) {
 function recordToOverviewRow(record) {
   const row=recordToCategoryRow(record);
   return {
-    "Source Group":record.sourceGroup||"Final Reports",
     "Complaint Number":row["Complaint / Notification"],
     "Lot Number":row["Lot"],
-    "End Customer":row["Customer Company"],
-    "Final Result / Status":row["Result / Status"],
+    "Customer":row["Customer Company"],
+    "Final Result / Status":record.sourceGroup==="Ongoing - Email"?"Ongoing":row["Result / Status"],
     "Standardized Symptom(s)":row["Standardized Symptom(s)"],
     "Date Registered":parseFlexibleDate(row["Complaint Registered Date"])||"",
     "Report Date":parseFlexibleDate(row["Report Date"])||"",
@@ -2224,7 +2247,7 @@ function recordToInvestigationRow(record) {
   return {
     "Complaint Number":row["Complaint / Notification"],
     "Lot Number":row["Lot"],
-    "End Customer":row["Customer Company"],
+    "Customer":row["Customer Company"],
     "Standardized Symptom(s)":row["Standardized Symptom(s)"],
     "Customer Reported Failure":row["Customer Reported Failure"],
     "Tests Performed":row["Tests / Assays Applied"],
@@ -2238,8 +2261,8 @@ function recordToRootCauseRows(record) {
   const row=recordToCategoryRow(record);
   const tests=record.testEvidence?.length?record.testEvidence:[{}];
   return tests.map(test=>({
-    "Complaint Number":row["Complaint / Notification"],"Lot Number":row["Lot"],"End Customer":row["Customer Company"],
-    "Standard Test":test.name||"","Sample Source":test.sampleSource||"","Sample ID":test.sampleId||"",
+    "Complaint Number":row["Complaint / Notification"],"Lot Number":row["Lot"],"Customer":row["Customer Company"],
+    "Standard Test":canonicalTestName(test.name),"Sample Source":test.sampleSource||"","Sample ID":test.sampleId||"",
     "Purpose":test.purpose||"","Method":testMethodBulletText(test.method),"Result":test.result||"","Outcome":test.outcome||"",
     "Within Spec?":test.withinSpec||"","Issue Observed?":test.issueObserved||"","Source Page":test.sourcePage||"",
     "Conditions":test.conditions||"","Conclusion of Root Cause Analysis":row["Root Cause Analysis Conclusion"]
@@ -2257,7 +2280,10 @@ function updateOrganizedSheet(wb,selectedSheets,name,headers,newRows) {
     removeSheetIfPresent(wb,name);
     return;
   }
-  const existing=sheetRows(wb.getWorksheet(name));
+  const existing=sheetRows(wb.getWorksheet(name)).map(row=>{
+    if (!row["Customer"] && row["End Customer"]) row["Customer"]=row["End Customer"];
+    return row;
+  });
   writeSheet(ensureSheet(wb,name),headers,mergeOrganizedRows(existing,newRows),false);
 }
 
@@ -2274,7 +2300,7 @@ function categoryRowsToComplaintSummary(categoryRows) {
         "Product Family":displayCellValue(row["Product Family"]),
         "Material No.":displayCellValue(row["Material No."]),
         "Membrane Type":displayCellValue(row["Membrane Type"]),
-        "End Customer":displayCellValue(row["Customer Company"]),
+        "Customer":displayCellValue(row["Customer Company"]),
         "Problem":displayCellValue(row["Problem"]),
         "Customer Reported Failure":displayCellValue(row["Customer Reported Failure"]),
         "Standardized Symptom(s)":displayCellValue(row["Standardized Symptom(s)"]),
@@ -3012,7 +3038,7 @@ async function refreshSearchChoices() {
     summaryDataset=await collectComplaintDataset();
     const customers=[...new Set(summaryDataset.flatMap(row=>splitUniqueValues(row.customer)).map(canonicalCustomerName).filter(Boolean))]
       .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-    customerSelect.innerHTML=`<option value="">Choose end customer</option>${customers.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+    customerSelect.innerHTML=`<option value="">Choose customer</option>${customers.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
     if (customers.includes(previousCustomer)) customerSelect.value=previousCustomer;
     customerSelect.disabled=!customers.length;
     const customer=customerSelect.value;
@@ -3048,9 +3074,9 @@ async function refreshSearchChoices() {
     valueSelect.disabled=!customer||!family||!sorted.length;
     $("searchStatus").className=customers.length?"status good":"status bad";
     $("searchStatus").textContent=!customers.length
-      ?"No end customers are available. Load source files in Workbook Summary first."
+      ?"No customers are available. Load source files in Workbook Summary first."
       :!customer
-        ?`${customers.length} end customer${customers.length===1?"":"s"} available. Choose one to continue.`
+        ?`${customers.length} customer${customers.length===1?"":"s"} available. Choose one to continue.`
         :!family
           ?`${families.length} membrane type${families.length===1?"":"s"} available for ${customer}. Choose one to continue.`
           :sorted.length
@@ -3070,7 +3096,7 @@ async function runQuickSearch() {
   const query=$("searchValue").value.trim();
   if (!customer || !family || !query) {
     $("searchStatus").className="status bad";
-    $("searchStatus").textContent=!customer?"Choose an end customer.":!family?"Choose a membrane type.":"Choose a complaint number.";
+    $("searchStatus").textContent=!customer?"Choose a customer.":!family?"Choose a membrane type.":"Choose a complaint number.";
     $("searchResult").innerHTML="";
     return;
   }
