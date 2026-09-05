@@ -62,7 +62,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Common PDF split-word errors, filename country tags, and overly long symptom labels are normalized before review
 - Re-importing an app-generated workbook replaces managed rows cleanly instead of duplicating the exported tables
 - Repeated-complaint comparison showing current and newly extracted values before the user chooses which version to keep
-- Responsive iPhone card layout for complaint and structured-test review
+- Responsive iPhone card layout for complaint, structured-test, and current-lot review; mobile tabs fit without horizontal scrolling
 - Add reports in later selections without replacing earlier extracted complaints
 - Upload an existing Excel workbook and several reports together, then download an updated workbook
 - Review every extracted complaint as one complete editable row across three focused tabs: Complaint overview, Complaint investigation, and Tests & root cause
@@ -72,7 +72,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Complaint Number, Lot Number and Customer keep the same first-three-column layout in all review tabs
 - Soft alternating case colors make separate complaints easier to follow when switching tabs
 - Customer country codes include `GR` for Greece, `UK` for the United Kingdom and `CA` for Canada
-- End-customer names are standardized to `Key name, City, Country code` where the location can be identified
+- Customer names are standardized to `Key name, City, Country code` where the location can be identified
 - Membrane labels use only the normalized family name, including `CN140ub` for the unbacked CN140 family
 - Structured Test Evidence appears as a compact editable one-test-per-row table; complaint, lot and customer are stacked in one shared details column, and test methods are always formatted as bullet points
 - In-process data review and batch record review are standardized as `IPW review` throughout the app and exported workbooks
@@ -91,7 +91,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - One-row-per-complaint consolidation when the same complaint appears on several product or category sheets
 - Original Quick Search for lot or complaint number remains available, with optional product-family filtering
 - Additional linked Quick Search in the order: customer, membrane type, complaint number
-- Quick Search complaint-number choices show the associated end-customer name beside each number
+- Quick Search complaint-number choices show the associated customer name beside each number
 - Quick Search also finds similar complaints by membrane family and symptom, then shows related complaint numbers, lots, historical tests and final results
 - Built-in, read-only Master–Final Roll Plan reference with seven ZM worksheet choices, 50 master-roll rows, final-roll positions and colored zones
 - Workbook summary and search also include reports currently extracted in the browser

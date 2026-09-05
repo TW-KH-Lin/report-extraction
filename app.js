@@ -492,6 +492,13 @@ function plausibleCustomerName(value="") {
   return Boolean(text && text.length>=2 && text.length<=140 && !/@|Biotech\s+GmbH|Complaint\s+Report|QN\s+no|thank\s+you/i.test(text));
 }
 
+function externalCustomerCandidate(value="") {
+  return canonicalCustomerName(String(value||"")
+    .split(/\s+(?=(?:Sartorius|Supplier)\b)/i)[0]
+    .replace(/\s{2,}/g," ")
+    .trim());
+}
+
 function sectionMatch(text, headingPattern, nextHeadingPattern, maxLength=2400) {
   const re = new RegExp(
     `${headingPattern}\\s*([\\s\\S]{1,${maxLength}}?)(?=${nextHeadingPattern}|$)`,
@@ -501,10 +508,10 @@ function sectionMatch(text, headingPattern, nextHeadingPattern, maxLength=2400) 
 }
 
 function customerCompanyFromHeader(text, filename="", sourceType="") {
-  const explicit = firstMatch(text, [
+  const explicit = externalCustomerCandidate(firstMatch(text, [
     /(?:Customer\s+(?:company|organization|account)|Company\s+name)\s*[:#]?\s*([^\n]{2,160})/i,
     /(?:new\s+complaint\s+report\s+from|please\s+forward[^\n]{0,80}?\s+to)\s*[:#]?\s*([^\n.]{2,160})/i
-  ]);
+  ]));
   if (plausibleCustomerName(explicit)) return canonicalCustomerName(explicit);
   if (sourceType==="msg") return customerFromFilename(filename);
   const lines = text.split(/\n/).map(x=>x.trim()).filter(Boolean);
@@ -514,13 +521,13 @@ function customerCompanyFromHeader(text, filename="", sourceType="") {
       const line=lines[i];
       if (/^(?:\d|Report\s+date|Complaint\s+information)/i.test(line)) continue;
       if (/@/.test(line)) continue;
-      const candidate=line.replace(/\b([A-Za-z]{5,})\s+([a-z])\b/g,"$1$2").replace(/\s{2,}.*$/, "").trim();
+      const candidate=externalCustomerCandidate(line.replace(/\b([A-Za-z]{5,})\s+([a-z])\b/g,"$1$2").replace(/\s{2,}.*$/, "").trim());
       if (!/^(?:From:|Address:|Subject:|Dear\b|We\s+acknowledge)/i.test(candidate) && plausibleCustomerName(candidate)) return canonicalCustomerName(candidate);
     }
   }
-  const fallback=firstMatch(text, [
+  const fallback=externalCustomerCandidate(firstMatch(text, [
     /\n([^\n]*(?:Co\.?|Ltd\.?|Inc\.?|LLC|GmbH|Corporation|Company|Biopharm|Biotechnology)[^\n]*)/i
-  ]);
+  ]));
   if (sourceType!=="msg" && !/Biotech\s+GmbH/i.test(fallback)) return canonicalCustomerName(fallback);
   return customerFromFilename(filename);
 }
@@ -879,7 +886,7 @@ function parseRecord(text, filename, sourceType) {
   if (!problem) warnings.push("Problem not extracted");
   if (!complaintRegisteredDate) warnings.push("Complaint registered date not extracted");
   if (!reportDate) warnings.push("Report date not extracted");
-  if (!customerCompany) warnings.push("Customer company not extracted");
+  if (!customerCompany) warnings.push("Customer not extracted");
   if (!customerReportedFailure) warnings.push("Customer-reported failure not extracted");
   if (classification.problemTypes==="Review required") warnings.push("Standardized symptom classification requires review");
   if (problemValidation.startsWith("Potential mismatch")) warnings.push(problemValidation);
@@ -1127,7 +1134,7 @@ function recordCard(r, index) {
       ${field("complaintRegisteredDate","Complaint Registered Date",r.complaintRegisteredDate)}
       ${field("reportDate","Report Date",r.reportDate)}
       ${field("daysToReport","Days to Report",r.daysToReport)}
-      ${field("customerCompany","Customer Company",r.customerCompany,"wide")}
+      ${field("customerCompany","Customer",r.customerCompany,"wide")}
       ${field("rollsImplicated","Rolls Implicated",r.rollsImplicated)}
       ${field("samplesReceived","Samples Received",r.samplesReceived)}
       ${field("sampleDetails","Sample Details",r.sampleDetails,"wide")}
@@ -1212,7 +1219,7 @@ function renderLotsTable() {
   if (!target) return;
   const rows=currentLotRows();
   target.innerHTML=rows.length
-    ? `<div class="table-scroll"><table><thead><tr><th>Lot</th><th>Complaint count</th><th>Complaint number(s)</th><th>Product family</th><th>Standardized symptom(s)</th><th>Status</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.lot)}</td><td>${row.complaints.size}</td><td>${esc([...row.complaints].join("; "))}</td><td>${esc([...row.families].join("; "))}</td><td>${esc([...row.symptoms].join("; "))}</td><td>${esc([...row.statuses].join("; "))}</td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="table-scroll"><table><thead><tr><th>Lot</th><th>Complaint count</th><th>Complaint number(s)</th><th>Product family</th><th>Standardized symptom(s)</th><th>Status</th></tr></thead><tbody>${rows.map(row=>`<tr><td data-label="Lot">${esc(row.lot)}</td><td data-label="Complaint count">${row.complaints.size}</td><td data-label="Complaint number(s)">${esc([...row.complaints].join("; "))}</td><td data-label="Product family">${esc([...row.families].join("; "))}</td><td data-label="Standardized symptom(s)">${esc([...row.symptoms].join("; "))}</td><td data-label="Status">${esc([...row.statuses].join("; "))}</td></tr>`).join("")}</tbody></table></div>`
     : `<p class="hint">No extracted lots yet.</p>`;
 }
 
@@ -1411,6 +1418,7 @@ function testsPerformedBulletText(value="") {
 function prepareRecordForReview(record) {
   if (record.sourceGroup==="Ongoing - Email") record.resultStatus="Ongoing";
   record.customerCompany=String(record.customerCompany||"").replace(/,\s*GB\s*$/i,", UK");
+  if (!record.customerCompany) record.customerCompany=compactCustomerName("",record.sourceFile);
   for (const test of record.testEvidence||[]) test.name=canonicalTestName(test.name);
   if (record._organizedReviewVersion===6) return;
   record.customerCompany=compactCustomerName(record.customerCompany,record.sourceFile);
@@ -1475,7 +1483,7 @@ function renderStructuredEvidenceReview() {
     const attrs=`data-record-index="${item.recordIndex}" ${kind==="shared"?`data-evidence-shared="${key}"`:`data-test-index="${item.testIndex}" data-test-field="${key}"`}`;
     const rowspan=kind==="shared"?` rowspan="${item.record.testEvidence.length}"`:"";
     return type==="long"
-      ?`<td data-label="${esc(label)}"${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
+      ?`<td class="evidence-long" data-label="${esc(label)}"${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
       :`<td data-label="${esc(label)}"${rowspan}><input aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs} value="${esc(value)}"></td>`;
   };
   return `<section class="structured-evidence-section"><div class="organized-review-heading"><strong>Structured Test Evidence</strong><span>${rows.length} editable test row${rows.length===1?"":"s"}</span></div>
@@ -3339,7 +3347,7 @@ async function refreshDirectSearchChoices() {
     const sorted=[...choices.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
     valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>{
       const customers=[...choices.get(value)].sort((a,b)=>a.localeCompare(b));
-      const customerLabel=customers.length?customers.join("; "):"End customer not recorded";
+      const customerLabel=customers.length?customers.join("; "):"Customer not recorded";
       return `<option value="${esc(value)}">${esc(value)} — ${esc(customerLabel)}</option>`;
     }).join("")}`;
     if (sorted.includes(previous)) valueSelect.value=previous;
@@ -3432,7 +3440,7 @@ async function refreshSearchChoices() {
     const sorted=[...choices.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
     valueSelect.innerHTML=`<option value="">Choose a ${esc(noun)}</option>${sorted.map(value=>{
       const customers=[...choices.get(value)].sort((a,b)=>a.localeCompare(b));
-      const customerLabel=customers.length?customers.join("; "):"End customer not recorded";
+      const customerLabel=customers.length?customers.join("; "):"Customer not recorded";
       return `<option value="${esc(value)}">${esc(value)} — ${esc(customerLabel)}</option>`;
     }).join("")}`;
     if (customer && family && sorted.includes(previous)) valueSelect.value=previous;

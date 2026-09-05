@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=26" />
+  <link rel="stylesheet" href="./styles.css?v=27" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -63,9 +63,9 @@
         </div>
       </div>
       <nav class="review-tabs" aria-label="Extracted information groups">
-        <button type="button" class="review-tab-button active" data-review-tab="overview">1. Complaint overview</button>
-        <button type="button" class="review-tab-button" data-review-tab="investigation">2. Complaint investigation</button>
-        <button type="button" class="review-tab-button" data-review-tab="evidence">3. Tests &amp; root cause</button>
+        <button type="button" class="review-tab-button active" data-review-tab="overview"><span class="review-tab-number">1</span><span>Overview</span></button>
+        <button type="button" class="review-tab-button" data-review-tab="investigation"><span class="review-tab-number">2</span><span>Investigation</span></button>
+        <button type="button" class="review-tab-button" data-review-tab="evidence"><span class="review-tab-number">3</span><span>Tests &amp; root cause</span></button>
       </nav>
       <div id="draftStatus" class="status"></div>
       <div id="records"></div>
@@ -189,7 +189,7 @@
         <h3>Find a customer complaint</h3>
         <p class="hint">Choose in this order: customer → membrane type → complaint number. The result includes the related lot and full complaint information.</p>
         <div class="search-controls">
-          <select id="searchCustomer" aria-label="End customer">
+          <select id="searchCustomer" aria-label="Customer">
             <option value="">Choose customer</option>
           </select>
           <select id="searchFamily" aria-label="Membrane type" disabled>
@@ -259,6 +259,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=62"></script>
+  <script type="module" src="./app.js?v=63"></script>
 </body>
 </html>
