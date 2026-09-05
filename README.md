@@ -50,6 +50,10 @@ The Excel file is generated locally in the browser and downloaded back to the us
 
 ## Current features
 
+- New workbooks default to five focused worksheets: Complaint Overview, Complaint Investigation, Tests & Root Cause, Complaint Summary, and Lot & Symptom Summary
+- Complaint Summary contains 16 essential columns; duplicate family, problem-type, quality-note and source-group columns are omitted from this compact sheet
+- Nine legacy/detailed worksheets remain available in the collapsed optional export group; **Tick all** includes all 14 worksheets
+- Both earlier 20-column summaries and compact 16-column summaries can be imported for summary/search and later workbook updates, retaining historical complaints
 - PDF complaint report extraction
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
@@ -57,6 +61,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - The complete validation/source-evidence panel and each individual case can be folded for a cleaner review screen
 - Clearly numbered multi-complaint reports are separated into one complaint/lot row per case while retaining shared evidence
 - Sequential large-file processing with live progress and a safe cancel button to keep the page responsive
+- PDF workers and page buffers are released after each report, including failed or cancelled reports
+- ZIP reports are decompressed individually as they are processed; a damaged input does not prevent later files from being extracted
 - Step-by-step Excel creation progress for large multi-sheet exports
 - Blank complaint-form templates are skipped instead of creating empty complaint rows
 - Common PDF split-word errors, filename country tags, and overly long symptom labels are normalized before review
@@ -77,9 +83,12 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Structured Test Evidence appears as a compact editable one-test-per-row table; complaint, lot and customer are stacked in one shared details column, and test methods are always formatted as bullet points
 - In-process data review and batch record review are standardized as `IPW review` throughout the app and exported workbooks
 - Click **Save changes** to keep edited review and test-evidence values for the next Excel export
+- Shared Complaint Number, Lot Number and Customer editors stay synchronized between root-cause and structured-test rows
+- Elapsed days update when dates change, including same-day reports; invalid calendar dates are flagged for review
 - Dates in the organized overview use year-month-day format
 - Export the three organized review tabs to separate Excel worksheets
 - Re-extract the same complaint to update its existing row instead of creating a duplicate
+- Pending duplicate decisions must be applied before another extraction, keeping unreviewed incoming reports available
 - Save reviewed results temporarily in the same browser and restore them after refresh
 - Review a live lot summary table before export
 - Choose individual app-managed worksheets to include in the Excel download
@@ -135,7 +144,7 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - `Lot & Symptom Summary` worksheet in generated Excel files
 - One complaint number = one row
 - Updates three category sheets
-- Rebuilds CN95 / CN140ub / CN140 / CN110 / CN180 sheets
+- Rebuilds CN95 / CN140ub / CN140 / CN110 / CN180 sheets when selected for export
 - Product-family sheets sorted by Problem
 
 ## Limitations of this first browser-only prototype
