@@ -167,10 +167,11 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin:12px 0 6px; color:#17365d; }
 .organized-review-heading span { color:#64748b; font-size:13px; }
 .validation-panel { margin:12px 0 16px; padding:14px; border:1px solid #c9d6e5; border-radius:10px; background:#f8fbff; }
-.validation-title { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.validation-title { display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer; }
 .validation-title strong, .validation-title span { display:block; }
 .validation-title strong { color:#17365d; }
-.validation-title > div > span { margin-top:3px; color:#64748b; font-size:12px; }
+.validation-title-copy > span { margin-top:3px; color:#64748b; font-size:12px; }
+.validation-master > summary::marker { color:#17365d; }
 .validation-counts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
 .validation-counts span, .validation-evidence-table td span { display:inline-block; padding:3px 7px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap; }
 .confidence-high { color:#166534; background:#dcfce7; }

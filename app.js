@@ -228,29 +228,33 @@ function complaintClassification(problem="", customerFailure="") {
   const matches=[];
   const rules=[
     ["Poor absorption","Flow / Wetting",/\b(?:poor|low|reduced)?\s*absorption\b|\babsorption\s+(?:issue|problem)\b/],
-    ["Abnormal wicking / flow","Flow / Wetting",/\b(?:wicking|slow running|slow flow|fast flow|flow time|fail(?:ed)? to run)\b/],
+    ["Abnormal wicking / flow","Flow / Wetting",/\b(?:wicking|slow running|running speed (?:is )?slow|slow flow|fast flow|flow time|much slower|fail(?:ed)? to run)\b/],
     ["Wetting issue","Flow / Wetting",/\b(?:wetting|hydrophilic|hydrophobic|dry spot|white circle)\w*\b/],
     ["Uneven line","Line / Printing",/\buneven\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,45}\buneven\b/],
     ["Discontinuous line","Line / Printing",/\b(?:discontinuous|interrupted|broken)\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,45}\b(?:discontinuous|interrupted|broken)\b/],
-    ["Wide / spreading line","Line / Printing",/\b(?:wide|wider|spreading|diffusion|fringing)\b[^.]{0,45}\b(?:print(?:ing|ed)?|line)s?\b/],
+    ["Wide / spreading line","Line / Printing",/\b(?:wide|wider|spreading|diffusion|fringing)\b[^.]{0,75}\b(?:print(?:ing|ed)?|line)s?|\b(?:print(?:ing|ed)?|line)s?\b[^.]{0,75}\b(?:wide|wider|spreading|diffus)/],
     ["Ghost line","Signal / Assay",/\bghost\s+line\b/],
-    ["Abnormal signal","Signal / Assay",/\b(?:abnormal|signal)\s+(?:signal|issue)\b/],
+    ["Shadow line","Signal / Assay",/\bshadow(?:s)?\s+(?:on\s+)?(?:stripe|line)s?\b/],
+    ["Printing issue","Line / Printing",/\bprint(?:ing|ed)?\s+(?:issue|problem)s?\b/],
+    ["Abnormal signal","Signal / Assay",/\b(?:abnormal|low|weak|strong)\s+signal\b|\bsignal\s+(?:low|high|weak|strong|issue)\b/],
     ["Low sensitivity","Signal / Assay",/\blow\s+sensitivity\b/],
     ["False positive","Signal / Assay",/\bfalse\s+positive\b/],
-    ["Color / visual issue","Appearance / Surface",/\b(?:coloring|colouring|discolou?r|color variation|colour variation|visual issue|stain|spot)\w*\b/],
+    ["Color / visual issue","Appearance / Surface",/\b(?:coloring|colouring|discolou?r|color (?:is )?(?:abnormal|not consistent)|colour (?:is )?(?:abnormal|not consistent)|color variation|colour variation|blue lines?|visual issue|stain|spot)\w*\b/],
     ["Surface roughness","Appearance / Surface",/\b(?:rough|roughness)\b[^.]{0,35}\b(?:membrane|surface)?\b/],
     ["Imprint","Appearance / Surface",/\bimprints?\b/],
     ["Particles","Appearance / Surface",/\b(?:particle|dust|debris)\w*\b/],
     ["Dirt","Appearance / Surface",/\b(?:dirt|contaminat|foreign material)\w*\b/],
     ["Scratch","Mechanical",/\bscratch(?:es|ed)?\b/],
-    ["Crack","Mechanical",/\bcracks?\b/],
+    ["Crack","Mechanical",/\bcracks?\b|裂痕|裂纹/],
     ["Rupture","Mechanical",/\b(?:rupture|broken membrane)\w*\b/],
     ["Edge damage / telescoping","Mechanical",/\b(?:edge damage|telescop|mechanical damage)\w*\b/],
+    ["Membrane sticking","Mechanical",/\bmembrane\s+(?:sticks?|sticking|stuck)\s+(?:together)?\b/],
+    ["Backing delamination","Mechanical",/\b(?:membrane|backing)\b[^.]{0,45}\b(?:separat(?:ed|ion)|delaminat(?:ed|ion))\b|\b(?:separat(?:ed|ion)|delaminat(?:ed|ion))\b[^.]{0,45}\b(?:membrane|backing)\b/],
     ["Thickness out of specification","Specification / Conversion",/\bthickness\b[^.]{0,35}\b(?:spec|specification|out)\b/],
     ["Length out of specification","Specification / Conversion",/\b(?:length|short roll)\b[^.]{0,35}\b(?:short|spec|specification|out)?\b/],
     ["Width out of specification","Specification / Conversion",/\bwidth\b[^.]{0,35}\b(?:spec|specification|out)\b/],
     ["Low peel strength","Specification / Conversion",/\b(?:low peel strength|peel strength|backing adhesion|label lifting)\b/],
-    ["Bag unsealed","Packaging / Storage",/\b(?:bag unsealed|unsealed bag|open bag|packaging integrity)\b/],
+    ["Bag unsealed","Packaging / Storage",/\b(?:bag unsealed|unsealed bag|open bag|packaging integrity|bags?\s+(?:are\s+)?sealed\s+loosely|loosely\s+sealed\s+bags?|bags?\b[^.]{0,24}\bunsealed)\b/],
     ["Odor / storage concern","Packaging / Storage",/\b(?:odor|odour|storage concern)\b/],
     ["Inter-roll / intra-lot variation","Variation",/\b(?:difference between rolls|roll-to-roll|intra-lot|zone difference|variation between rolls)\b/]
   ];
@@ -258,7 +262,9 @@ function complaintClassification(problem="", customerFailure="") {
   const symptoms=[...new Set(matches.map(x=>x.symptom))];
   const types=[...new Set(matches.map(x=>x.type))];
   const fallback=cleanBlock(problem).replace(/^(?:performance|quality|product|functionality|functional)(?:\s+\w+)?\s+(?:issue|problem)\s*:?\s*/i,"");
-  const standardizedSymptoms=symptoms.length?symptoms.join("; "):(fallback||"Review required");
+  const shortFallback=fallback && fallback.length<=100 && !/[.!?]\s+.+[.!?]/.test(fallback)
+    && !/(?:\bComp\s*-|\b1UN\w+|批次|投诉)/i.test(fallback)?fallback:"";
+  const standardizedSymptoms=symptoms.length?symptoms.join("; "):(problemFromChineseText(fallback)||shortFallback||"Review required");
   const problemTypes=types.length?types.join("; "):"Review required";
   const lfaRelevance=types.some(x=>["Flow / Wetting","Line / Printing","Signal / Assay"].includes(x))
     ?"LFA performance"
@@ -270,8 +276,11 @@ function complaintClassification(problem="", customerFailure="") {
 }
 
 function parseFlexibleDate(value="") {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   const text=String(value).trim();
-  let m=text.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+  let m=text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])));
+  m=text.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
   if (m) {
     const year=Number(m[3])+(m[3].length===2?2000:0);
     return new Date(Date.UTC(year,Number(m[2])-1,Number(m[1])));
@@ -336,11 +345,27 @@ function repairCommonPdfSpacing(value="") {
     .replace(/\bH\s+angzhou\b/gi,"Hangzhou")
     .replace(/\bHa\s+ngzhou\b/gi,"Hangzhou")
     .replace(/\bC\s+ustomer\b/gi,"Customer")
-    .replace(/\bR\s+eport\b/gi,"Report");
+    .replace(/\bR\s+eport\b/gi,"Report")
+    .replace(/\bS\s+ignal\b/gi,"Signal")
+    .replace(/\bO\s+ne\b/gi,"One")
+    .replace(/\bP\s+articles\b/gi,"Particles")
+    .replace(/\bB\s+ags\b/gi,"Bags")
+    .replace(/\bAc\s+on\b/gi,"Acon")
+    .replace(/\bUni\s+s\s+art\b/gi,"Unisart")
+    .replace(/\bK\s+angpu\b/gi,"Kangpu")
+    .replace(/\bL\s+ine\b/gi,"Line")
+    .replace(/\branqe\b/gi,"range");
+}
+
+function sanitizeSummaryText(value="") {
+  return repairCommonPdfSpacing(String(value||""))
+    .replace(/\bSartori(?:us|ous)\b/gi,"supplier")
+    .replace(/\s{2,}/g," ")
+    .trim();
 }
 
 function normalizeProblemText(value="") {
-  let text=repairCommonPdfSpacing(cleanBlock(value))
+  let text=sanitizeSummaryText(cleanBlock(value))
     .replace(/^Customer\s+statement\s*:\s*/i,"")
     .replace(/[“”"]/g,"")
     .trim();
@@ -380,6 +405,7 @@ function canonicalCustomerName(value="") {
     .replace(/\s*\(\s*/g," (").replace(/\s*\)\s*/g,") ")
     .replace(/\bCo\.?\s*,?\s*Ltd\.?\b/gi,"Co., Ltd.")
     .replace(/\s+([,.;])/g,"$1")
+    .replace(/,\s*/g,", ")
     .replace(/\.{2,}$/,".")
     .replace(/\s{2,}/g," ")
     .trim();
@@ -387,6 +413,8 @@ function canonicalCustomerName(value="") {
 
 const CUSTOMER_LOCATIONS = [
   ["Hangzhou","CN",["hangzhou","hz"]],["Xiamen","CN",["xiamen","xm"]],
+  ["Jiangsu","CN",["jiangsu","js"]],["Jinan","CN",["jinan","jn"]],
+  ["Anhui","CN",["anhui","ah"]],["Tangshan","CN",["tangshan","ts"]],
   ["Nanjing","CN",["nanjing","nj"]],["Guangzhou","CN",["guangzhou","gz"]],
   ["Shenzhen","CN",["shenzhen","sz"]],["Chengdu","CN",["chengdu","cd","sichuan","sc"]],
   ["Chongqing","CN",["chongqing","cq"]],["Beijing","CN",["beijing","bj"]],
@@ -405,19 +433,34 @@ function countryCodeFromCustomerText(value="",sourceFile="") {
   const text=`${value} ${sourceFile}`.toLowerCase();
   const rules=[
     ["US",/\b(?:usa|u\.s\.a|united states|america)\b/],["JP",/\b(?:japan|japanese|jap)\b/],
-    ["KR",/\b(?:south korea|korea|korean)\b/],["IN",/\b(?:india|indian)\b/],
+    ["KR",/\b(?:south korea|korea|korean)\b/],["IN",/\b(?:india|indian|ind)\b/],
     ["DE",/\b(?:germany|german)\b/],["UK",/\b(?:united kingdom|uk|britain|british)\b/],
-    ["GR",/\b(?:greece|greek)\b/],["CA",/\b(?:canada|canadian)\b/],
+    ["GR",/\b(?:greece|greek|gre)\b/],["CA",/\b(?:canada|canadian|can)\b/],
     ["FR",/\b(?:france|french)\b/],["CN",/\b(?:china|chinese|prc)\b/]
   ];
   return rules.find(([,pattern])=>pattern.test(text))?.[0]||"";
 }
 
 function compactCustomerName(value="",sourceFile="") {
-  const original=canonicalCustomerName(value);
+  let original=canonicalCustomerName(value);
+  const originalIsLocation=CUSTOMER_LOCATIONS.some(([name])=>name.toLowerCase()===original.toLowerCase());
+  if (!original || originalIsLocation || /^(?:complaint|final)\s+report\b/i.test(original)) {
+    original=canonicalCustomerName(customerFromFilename(sourceFile))||original;
+  }
   if (!original) return "";
+  const existingParts=original.split(",").map(part=>part.trim()).filter(Boolean);
+  let existingCountry="", existingCity="";
+  if (existingParts.length>=2 && /^(?:CN|US|JP|KR|IN|DE|UK|GR|CA|FR|GB)$/i.test(existingParts.at(-1))) {
+    existingCountry=existingParts.pop().toUpperCase().replace(/^GB$/,"UK");
+    existingCity=CUSTOMER_LOCATIONS.some(([name])=>name.toLowerCase()===String(existingParts.at(-1)||"").toLowerCase())
+      ?existingParts.pop():"";
+    const existingKey=existingParts.join(" ").replace(/\s{2,}/g," ").trim();
+    if (CUSTOMER_LOCATIONS.some(([name])=>name.toLowerCase()===existingKey.toLowerCase())) {
+      original=canonicalCustomerName(customerFromFilename(sourceFile))||existingKey;
+    } else original=existingKey;
+  }
   const combined=`${original} ${sourceFile}`.toLowerCase();
-  let city="", country=countryCodeFromCustomerText(original,sourceFile);
+  let city=existingCity, country=existingCountry||countryCodeFromCustomerText(original,sourceFile);
   for (const [name,code,aliases] of CUSTOMER_LOCATIONS) {
     if (aliases.some(alias=>new RegExp(`(?:^|[^a-z])${alias.replace(/\s+/g,"\\s+")}(?:[^a-z]|$)`,"i").test(combined))) {
       city=name;
@@ -425,19 +468,22 @@ function compactCustomerName(value="",sourceFile="") {
       break;
     }
   }
-  const sourceTag=String(sourceFile).match(/(?:^|[(_-])(USA|US|JAP|JP|KR|IN|DE|UK|GR|CA)(?=[_)-])/i)?.[2]?.toUpperCase()||"";
-  if (!country && sourceTag) country={USA:"US",US:"US",JAP:"JP",JP:"JP",KR:"KR",IN:"IN",DE:"DE",UK:"UK",GR:"GR",CA:"CA"}[sourceTag]||sourceTag;
+  const sourceTag=String(sourceFile).match(/(?:^|[(_-])(USA|US|JAP|JP|KOREA|KR|IND|IN|DE|UK|GRE|GR|CAN|CA)(?=[_)-])/i)?.[1]?.toUpperCase()||"";
+  if (!country && sourceTag) country={USA:"US",US:"US",JAP:"JP",JP:"JP",KOREA:"KR",KR:"KR",IND:"IN",IN:"IN",DE:"DE",UK:"UK",GRE:"GR",GR:"GR",CAN:"CA",CA:"CA"}[sourceTag]||sourceTag;
   if (!country && city) country=CUSTOMER_LOCATIONS.find(([name])=>name===city)?.[1]||"";
   let key=original
     .replace(/\([^)]*\)/g," ")
-    .replace(/\b(?:hangzhou|xiamen|nanjing|guangzhou|shenzhen|chengdu|chongqing|beijing|shanghai|suzhou|wuhan|qingdao|sichuan|tokyo|osaka|seoul|mumbai|new delhi|delhi|athens|thessaloniki|manchester|birmingham|bristol|oxford|toronto|vancouver|montreal|montréal|ottawa|calgary)\b/gi," ")
+    .replace(/\b(?:hangzhou|xiamen|jiangsu|jinan|anhui|tangshan|nanjing|guangzhou|shenzhen|chengdu|chongqing|beijing|shanghai|suzhou|wuhan|qingdao|sichuan|tokyo|osaka|seoul|mumbai|new delhi|delhi|athens|thessaloniki|manchester|birmingham|bristol|oxford|toronto|vancouver|montreal|montréal|ottawa|calgary)\b/gi," ")
     .replace(/\b(?:china|chinese|prc|usa|united states|america|japan|japanese|korea|korean|india|indian|germany|german|united kingdom|uk|britain|british|greece|greek|canada|canadian)\b/gi," ")
-    .replace(/\b(?:biopharm(?:aceuticals?)?|biotech(?:nology)?|technology|medical|diagnostics?|diagnostic|healthcare|products?)\b.*$/i,"")
-    .replace(/\b(?:co\.?\s*,?\s*ltd\.?|company|corporation|corp\.?|inc\.?|llc|gmbh|limited)\b.*$/i,"")
+    .replace(/^(?:shandong|anhui|jiangsu)\s+/i,"")
+    .replace(/\b(?:biopharm(?:aceuticals?)?|biotech(?:nology)?|biotechnol(?:ogy|gogy)|technology|medical|diagnostics?|diagnostic|healthcare|products?|laborator(?:y|ies))\b.*$/i,"")
+    .replace(/\b(?:co\.?\s*,?\s*ltd\.?|company|corporation|corp\.?|inc(?:ms)?\.?|llc|gmbh|limited)\b.*$/i,"")
+    .replace(/(?:\s*,\s*){2,}/g,", ")
     .replace(/^[,\s-]+|[,\s-]+$/g,"")
     .replace(/\s{2,}/g," ")
     .trim();
   if (!key) key=original.split(/[,()]/)[0].trim();
+  if (/^(?:complaint|final)\s+report\b/i.test(key)) key=customerFromFilename(sourceFile)||"";
   return [key,city,country].filter(Boolean).join(", ");
 }
 
@@ -697,6 +743,13 @@ function complaintIdsFromFilename(filename="") {
     .map(match=>`Comp-${String(Number(match[1])).padStart(7,"0")}`);
 }
 
+function isBlankComplaintTemplate(text="") {
+  const source=String(text||"");
+  return /Customer\s+Complaint\s+Information\s+Form/i.test(source)
+    && /Click\s+here\s+to\s+enter\s+text/i.test(source)
+    && !/\b(?:Comp\s*-\s*\d{6,10}|13\d{8}|1UN(?:14|95|11|18)[A-Z0-9]+)\b/i.test(source);
+}
+
 function parseRecord(text, filename, sourceType) {
   const rawSourceText=text;
   text=repairCommonPdfSpacing(text);
@@ -785,28 +838,28 @@ function parseRecord(text, filename, sourceType) {
     /Customer\s+statement\s*:\s*([\s\S]{3,700}?)(?=\s+(?:The\s+customer\s+claimed|Root\s+cause|(?:Company|Manufacturer)\s+Criticality|Complaint\s+status|1\.2\.|Criticality|--- Page))/i,
     /Issue\s+description\s*:\s*[“"]?([\s\S]{3,700}?)[”"]?\s*(?=Customer\s+CRN|Product\s+Code|SSB\s+batch|Due\s+date|Please\s+use)/i
   ]).replace(/\s*-\s*/g,"-").replace(/[“”"]+/g,""));
-  const rootCauseConclusion = sectionMatch(
+  const rootCauseConclusion = sanitizeSummaryText(sectionMatch(
     text,
     "Conclusion\\s+of\\s+the\\s+root\\s+cause\\s+analysis\\s*",
     "(?:4\\.\\s*Correction|4\\.\\s*Conclusion|5\\.\\s*Conclusion|Corrective\\s*/\\s*Preventive|--- Page)",
     2600
-  );
+  ));
   const problem = enrichProblemDescription(formalProblem, customerReportedFailure, rootCauseConclusion);
   const problemValidation = validateProblemAgainstRootCause(problem, customerReportedFailure, rootCauseConclusion);
-  const finalAssessment = sectionMatch(
+  const finalAssessment = sanitizeSummaryText(sectionMatch(
     text,
     "(?:^|\\n)\\s*(?:4|5)\\.\\s*Conclusion\\s*",
     "(?:Best\\s+regards|Written\\s+by|Complaint\\s+number|--- Page)",
     2200
-  );
+  ));
   const similarEvents = selectedCheckbox(text, "Similar events reported", ["Yes","No"]);
   const containmentNecessary = selectedCheckbox(text, "Containment action necessary", ["Yes","No"]);
   const correctiveActionNecessary = selectedCheckbox(text, "Corrective / Preventive action necessary", ["Yes","No"])
     || selectedCheckbox(text, "Corrective / Preventive actions necessary", ["Yes","No"]);
-  const finalScope = firstMatch(text, [
+  const finalScope = sanitizeSummaryText(firstMatch(text, [
     /(The\s+scope\s+of\s+failure\s+is\s+concluded[\s\S]{3,240}?\.)(?=\s|$)/i,
     /(Complaint\s+(?:not\s+confirmed|confirmed)[\s\S]{3,180}?(?:monitoring|claimed\s+units)\.?)/i
-  ]);
+  ]));
   const coordinator = coordinatorFromText(text);
   const reportVersion = firstMatch(text, [/Report\s+version\s*[:#]?\s*([A-Z0-9.-]+)/i]);
   let complaintRegisteredDate = firstMatch(text, [
@@ -847,18 +900,19 @@ function parseRecord(text, filename, sourceType) {
     membraneType:membraneType(material,productDescription)||productFamilyFromText(`${productDescription} ${text.slice(0,1200)}`), zones, mrfrCombined,
     standardizedSymptoms:classification.standardizedSymptoms,
     problemTypes:classification.problemTypes, lfaRelevance:classification.lfaRelevance,
-    formalProblem, problem, assaysApplied, resultStatus:status, criticality,
+    formalProblem:sanitizeSummaryText(formalProblem), problem:sanitizeSummaryText(problem), assaysApplied, resultStatus:status, criticality,
     masterRolls: mrfr.masters.join("; "),
     finalRolls: mrfr.finals.join("; "),
     mrfrAreas: mrfr.areas.join("; "),
     failureReproduced: reproduced,
     rootCauseRelated: rootCause,
-    customerReportedFailure, coordinator, reportVersion,
+    customerReportedFailure:sanitizeSummaryText(customerReportedFailure), coordinator, reportVersion,
     complaintRegisteredDate, samplesReceivedDate, daysToReport,
     similarEvents, containmentNecessary, correctiveActionNecessary,
-    rootCauseConclusion, problemValidation, finalAssessment, finalScope, testEvidence,
+    rootCauseConclusion, problemValidation, finalAssessment, finalScope,
+    testEvidence:testEvidence.map(test=>Object.fromEntries(Object.entries(test).map(([key,value])=>[key,typeof value==="string"?sanitizeSummaryText(value):value]))),
     warnings: warnings.join("; "),
-    rawText:rawSourceText.slice(0,30000)
+    rawText:sanitizeSummaryText(rawSourceText).slice(0,30000)
   };
 }
 
@@ -1008,6 +1062,7 @@ async function extractMany(name, buffer) {
   const ext = name.toLowerCase().split(".").pop();
   if (ext === "pdf") {
     const text=await pdfText(buffer);
+    if (isBlankComplaintTemplate(text)) return [];
     return splitNumberedPdfCases(text,parseRecord(text,name,"pdf"));
   }
   if (ext === "msg") {
@@ -1281,8 +1336,8 @@ function renderValidationPanel() {
   const high=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="High").length,0);
   const medium=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="Medium").length,0);
   const review=totalFields-high-medium;
-  return `<section id="validationPanel" class="validation-panel"><div class="validation-title"><div><strong>Extraction validation &amp; source evidence</strong><span>Check report page and source text before export.</span></div>
-    <div class="validation-counts"><span class="confidence-high">High ${high}</span><span class="confidence-medium">Medium ${medium}</span><span class="confidence-review">Review ${review}</span></div></div>
+  return `<section id="validationPanel" class="validation-panel"><details class="validation-master"><summary class="validation-title"><span class="validation-title-copy"><strong>Extraction validation &amp; source evidence</strong><span>Expand to check report page and source text before export.</span></span>
+    <span class="validation-counts"><span class="confidence-high">High ${high}</span><span class="confidence-medium">Medium ${medium}</span><span class="confidence-review">Review ${review}</span></span></summary>
     <div class="validation-cases">${records.map((record,index)=>{
       const result=reviewed[index];
       const title=record.complaintNo||record.sourceFile||`Complaint ${index+1}`;
@@ -1291,7 +1346,7 @@ function renderValidationPanel() {
         <div class="table-scroll"><table class="validation-evidence-table"><thead><tr><th>Field</th><th>Confidence</th><th>Extracted value</th><th>Page</th><th>Source evidence</th></tr></thead><tbody>
           ${result.fields.map(field=>`<tr><td data-label="Field">${esc(field.label)}</td><td data-label="Confidence"><span class="confidence-${field.confidence.toLowerCase()}">${field.confidence}</span></td><td data-label="Extracted value">${esc(field.value||"Missing")}</td><td data-label="Page">${esc(field.page)}</td><td data-label="Source evidence">${esc(field.snippet)}</td></tr>`).join("")}
         </tbody></table></div></details>`;
-    }).join("")}</div></section>`;
+    }).join("")}</div></details></section>`;
 }
 
 function refreshValidationPanel() {
@@ -1357,13 +1412,27 @@ function prepareRecordForReview(record) {
   if (record.sourceGroup==="Ongoing - Email") record.resultStatus="Ongoing";
   record.customerCompany=String(record.customerCompany||"").replace(/,\s*GB\s*$/i,", UK");
   for (const test of record.testEvidence||[]) test.name=canonicalTestName(test.name);
-  if (record._organizedReviewPrepared) return;
+  if (record._organizedReviewVersion===6) return;
   record.customerCompany=compactCustomerName(record.customerCompany,record.sourceFile);
+  for (const key of ["formalProblem","problem","customerReportedFailure","rootCauseConclusion","finalAssessment","finalScope"]) {
+    record[key]=sanitizeSummaryText(record[key]);
+  }
+  for (const test of record.testEvidence||[]) {
+    for (const key of ["purpose","method","result","outcome","conditions"]) test[key]=sanitizeSummaryText(test[key]);
+  }
+  const classification=complaintClassification(record.problem,record.customerReportedFailure);
+  record.standardizedSymptoms=sanitizeSummaryText(record.standardizedSymptoms);
+  if (classification.standardizedSymptoms!=="Review required") {
+    record.standardizedSymptoms=classification.standardizedSymptoms;
+  } else if (!record.standardizedSymptoms || record.standardizedSymptoms.length>100 || /Sartori(?:us|ous)|(?:\bComp\s*-|\b1UN\w+|批次|投诉)/i.test(record.standardizedSymptoms)) {
+    record.standardizedSymptoms=classification.standardizedSymptoms;
+  }
   record.membraneType=productFamily(record.materialNo)
     ||productFamilyFromText(`${record.membraneType||""} ${record.productDescription||""}`)
     ||String(record.membraneType||"").replace(/\b(?:un)?backed\b/gi,"").replace(/\s{2,}/g," ").trim();
   record.assaysApplied=testsPerformedBulletText(record.assaysApplied);
   record._organizedReviewPrepared=true;
+  record._organizedReviewVersion=6;
 }
 
 function organizedReviewCell(record,index,definition) {
@@ -2261,7 +2330,10 @@ function formatSheet(ws, hasSource=false) {
   }
   for (const dateHeader of ["Complaint Registered Date","Registered Date","Date Registered","Report Date"]) {
     const index=headers.indexOf(dateHeader)+1;
-    if (index>0) for (let r=2;r<=ws.rowCount;r++) ws.getCell(r,index).numFmt=ws.name===REVIEW_OVERVIEW_SHEET?"yyyy-mm-dd":"dd.mm.yyyy";
+    if (index>0) for (let r=2;r<=ws.rowCount;r++) {
+      const cell=ws.getCell(r,index);
+      if (cell.value instanceof Date) cell.numFmt=ws.name===REVIEW_OVERVIEW_SHEET?"yyyy-mm-dd":"dd.mm.yyyy";
+    }
   }
   ws.autoFilter={from:{row:1,column:1},to:{row:ws.rowCount,column:ws.columnCount}};
 }
@@ -2269,11 +2341,21 @@ function formatSheet(ws, hasSource=false) {
 function writeSheet(ws, headers, rows, hasSource=false) {
   clearSheet(ws);
   ws.addRow(headers);
-  for (const row of rows) ws.addRow(headers.map(h=>row[h] ?? ""));
+  for (const row of rows) ws.addRow(headers.map(h=>{
+    const value=row[h];
+    return value==null || value==="" ? null : value;
+  }));
   formatSheet(ws,hasSource);
   if (headers.includes("Structured Test Evidence") || headers.includes("Conclusion of Root Cause Analysis")) {
     for (let row=2;row<=ws.rowCount;row++) ws.getRow(row).height=96;
   }
+}
+
+function replaceManagedSheet(wb,name,headers,rows,hasSource=false) {
+  removeSheetIfPresent(wb,name);
+  const ws=ensureSheet(wb,name);
+  writeSheet(ws,headers,rows,hasSource);
+  return ws;
 }
 
 function normalizeId(v) { return String(v||"").trim().toLowerCase(); }
@@ -2308,15 +2390,15 @@ function recordToCategoryRow(r) {
   return {
     "Lot":r.lot||"", "Product Family":fam,
     "Membrane Type":membraneType(r.materialNo,r.productDescription)||r.membraneType||"",
-    "Customer Company":r.customerCompany||"",
+    "Customer Company":compactCustomerName(r.customerCompany,r.sourceFile)||"",
     "Rolls Implicated":r.rollsImplicated||"", "Samples Received":r.samplesReceived||"",
     "Zone(s)":r.zones||"",
     "Final Roll(s)":r.finalRolls||"", "Master Roll(s)":r.masterRolls||"",
     "MR-FR Area(s)":r.mrfrAreas||"", "MR-FR (s)":r.mrfrCombined||r.mrfrAreas||"",
     "Complaint / Notification":r.complaintNo||"",
-    "Formal Issue Description":r.formalProblem||"", "Problem":r.problem||"",
-    "Customer Reported Failure":r.customerReportedFailure||"",
-    "Standardized Symptom(s)":classification.standardizedSymptoms,
+    "Formal Issue Description":sanitizeSummaryText(r.formalProblem), "Problem":sanitizeSummaryText(r.problem),
+    "Customer Reported Failure":sanitizeSummaryText(r.customerReportedFailure),
+    "Standardized Symptom(s)":sanitizeSummaryText(r.standardizedSymptoms)||classification.standardizedSymptoms,
     "Problem Type":classification.problemTypes,"LFA Relevance":classification.lfaRelevance,
     "Tests / Assays Applied":r.assaysApplied||"", "Result / Status":r.resultStatus||"",
     "Criticality":r.criticality||"", "Failure Reproduced?":r.failureReproduced||"",
@@ -2325,9 +2407,9 @@ function recordToCategoryRow(r) {
     "Similar Events Same Category?":r.similarEvents||"",
     "Containment Necessary?":r.containmentNecessary||"",
     "Corrective / Preventive Action Necessary?":r.correctiveActionNecessary||"",
-    "Root Cause Analysis Conclusion":r.rootCauseConclusion||"",
+    "Root Cause Analysis Conclusion":sanitizeSummaryText(r.rootCauseConclusion),
     "Problem Description Check":r.problemValidation||"",
-    "Final Assessment / Root Cause":r.finalAssessment||"", "Final Scope / Decision":r.finalScope||"",
+    "Final Assessment / Root Cause":sanitizeSummaryText(r.finalAssessment), "Final Scope / Decision":sanitizeSummaryText(r.finalScope),
     "Sample Details":r.sampleDetails||"", "Data Quality / Notes":r.warnings||"",
     "Material No.":r.materialNo||"", "Complaint Registered Date":registeredDate,
     "Report Date":reportDate,"Days":calculatedDays===""?(r.daysToReport||""):calculatedDays
@@ -2406,7 +2488,7 @@ function updateOrganizedSheet(wb,selectedSheets,name,headers,newRows) {
     if (!row["Customer"] && row["End Customer"]) row["Customer"]=row["End Customer"];
     return row;
   });
-  writeSheet(ensureSheet(wb,name),headers,mergeOrganizedRows(existing,newRows),false);
+  replaceManagedSheet(wb,name,headers,mergeOrganizedRows(existing,newRows),false);
 }
 
 function categoryRowsToComplaintSummary(categoryRows) {
@@ -2477,13 +2559,22 @@ function sortFamily(rows) {
   });
 }
 
-async function buildUpdatedWorkbook() {
+async function buildUpdatedWorkbook(onProgress=()=>{}) {
   syncRecordsFromDom();
   if (!records.length) throw new Error("Extract at least one complaint report first.");
   const selectedSheets=selectedExportSheets();
   lastPreservedSheetNames=[];
   if (!selectedSheets.size) throw new Error("Tick at least one sheet to export.");
   let wb;
+  const totalSteps=16;
+  let completedSteps=0;
+  const progress=async label=>{
+    completedSteps++;
+    onProgress({label,current:completedSteps,total:totalSteps,percent:Math.round((completedSteps/totalSteps)*100)});
+    await yieldToBrowser();
+  };
+  onProgress({label:"Reading current data",current:0,total:totalSteps,percent:0});
+  await yieldToBrowser();
   if (!workbookBuffer) {
     wb=new ExcelJS.Workbook();
     workbookMode="new";
@@ -2496,6 +2587,7 @@ async function buildUpdatedWorkbook() {
       workbookMode="reference-readonly";
     }
   }
+  await progress("Workbook ready");
 
   const categoryRows={};
   for (const name of CATEGORY_SHEETS) categoryRows[name]=sheetRows(wb.getWorksheet(name));
@@ -2515,9 +2607,9 @@ async function buildUpdatedWorkbook() {
 
   for (const name of CATEGORY_SHEETS) {
     if (selectedSheets.has(name)) {
-      const ws=ensureSheet(wb,name);
-      writeSheet(ws,CATEGORY_HEADERS,sortCategory(categoryRows[name]),false);
+      replaceManagedSheet(wb,name,CATEGORY_HEADERS,sortCategory(categoryRows[name]),false);
     } else removeSheetIfPresent(wb,name);
+    await progress(`Prepared ${name}`);
   }
 
   let evidenceRows=sheetRows(wb.getWorksheet(EVIDENCE_SHEET));
@@ -2527,16 +2619,22 @@ async function buildUpdatedWorkbook() {
     evidenceRows=evidenceRows.filter(x=>normalizeComplaintId(x["Complaint / Notification"])!==id);
     evidenceRows.push(...recordToEvidenceRows(r));
   }
-  if (selectedSheets.has(EVIDENCE_SHEET)) writeSheet(ensureSheet(wb,EVIDENCE_SHEET),EVIDENCE_HEADERS,evidenceRows,false);
+  if (selectedSheets.has(EVIDENCE_SHEET)) replaceManagedSheet(wb,EVIDENCE_SHEET,EVIDENCE_HEADERS,evidenceRows,false);
   else removeSheetIfPresent(wb,EVIDENCE_SHEET);
-  if (selectedSheets.has(COMPLAINT_SUMMARY_SHEET)) writeSheet(ensureSheet(wb,COMPLAINT_SUMMARY_SHEET),COMPLAINT_SUMMARY_HEADERS,categoryRowsToComplaintSummary(categoryRows),false);
+  await progress(`Prepared ${EVIDENCE_SHEET}`);
+  if (selectedSheets.has(COMPLAINT_SUMMARY_SHEET)) replaceManagedSheet(wb,COMPLAINT_SUMMARY_SHEET,COMPLAINT_SUMMARY_HEADERS,categoryRowsToComplaintSummary(categoryRows),false);
   else removeSheetIfPresent(wb,COMPLAINT_SUMMARY_SHEET);
-  if (selectedSheets.has(SUMMARY_SHEET)) writeSheet(ensureSheet(wb,SUMMARY_SHEET),SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
+  await progress(`Prepared ${COMPLAINT_SUMMARY_SHEET}`);
+  if (selectedSheets.has(SUMMARY_SHEET)) replaceManagedSheet(wb,SUMMARY_SHEET,SUMMARY_HEADERS,lotSymptomSummaryRows(categoryRows),false);
   else removeSheetIfPresent(wb,SUMMARY_SHEET);
+  await progress(`Prepared ${SUMMARY_SHEET}`);
 
   updateOrganizedSheet(wb,selectedSheets,REVIEW_OVERVIEW_SHEET,REVIEW_OVERVIEW_HEADERS,records.map(recordToOverviewRow));
+  await progress(`Prepared ${REVIEW_OVERVIEW_SHEET}`);
   updateOrganizedSheet(wb,selectedSheets,REVIEW_INVESTIGATION_SHEET,REVIEW_INVESTIGATION_HEADERS,records.map(recordToInvestigationRow));
+  await progress(`Prepared ${REVIEW_INVESTIGATION_SHEET}`);
   updateOrganizedSheet(wb,selectedSheets,REVIEW_ROOT_CAUSE_SHEET,REVIEW_ROOT_CAUSE_HEADERS,records.flatMap(recordToRootCauseRows));
+  await progress(`Prepared ${REVIEW_ROOT_CAUSE_SHEET}`);
 
   const familyRows=Object.fromEntries(FAMILY_SHEETS.map(f=>[f,[]]));
   const labels={"Final Reports":"Final Report","Ongoing - Email":"Ongoing - Email","Not in Detail Excel":"Not in Detail Excel"};
@@ -2554,14 +2652,15 @@ async function buildUpdatedWorkbook() {
       if (existing && !hasManagedHeaders(existing,FAMILY_HEADERS)) {
         lastPreservedSheetNames.push(fam);
       } else {
-        const ws=existing||ensureSheet(wb,fam);
-        writeSheet(ws,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
+        replaceManagedSheet(wb,fam,FAMILY_HEADERS,sortFamily(familyRows[fam]),true);
       }
     } else removeSheetIfPresent(wb,fam);
+    await progress(`Prepared ${fam}`);
   }
 
   if (!wb.worksheets.length) throw new Error("The selected export would contain no worksheets.");
   lastBuiltSheetNames=wb.worksheets.map(sheet=>sheet.name);
+  await progress("Packaging Excel file");
   const out=await wb.xlsx.writeBuffer();
   return out;
 }
@@ -2783,6 +2882,20 @@ function duplicateFieldChanges(existing,incoming) {
   return DUPLICATE_COMPARE_FIELDS.filter(([key])=>String(existing[key]||"").trim()!==String(incoming[key]||"").trim());
 }
 
+function duplicateRecordQuality(record) {
+  const customer=String(record.customerCompany||"").trim();
+  const customerKey=customer.split(",")[0].trim();
+  const locationOnly=CUSTOMER_LOCATIONS.some(([name])=>name.toLowerCase()===customerKey.toLowerCase());
+  let score=0;
+  for (const key of ["lot","materialNo","complaintRegisteredDate","reportDate","rootCauseConclusion","customerReportedFailure"]) {
+    if (String(record[key]||"").trim()) score+=1;
+  }
+  if (customer && !locationOnly && !/^(?:complaint|final)\s+report/i.test(customer)) score+=3;
+  if ((record.testEvidence||[]).length) score+=2;
+  if (/\([^()]+\)(?=\.[^.]+$)/.test(String(record.sourceFile||""))) score+=1;
+  return score;
+}
+
 function renderDuplicateReview() {
   const target=$("duplicateReview");
   if (!pendingDuplicateConflicts.length) {
@@ -2796,8 +2909,9 @@ function renderDuplicateReview() {
     ${pendingDuplicateConflicts.map((conflict,index)=>{
       const changes=duplicateFieldChanges(conflict.existing,conflict.incoming);
       const complaint=conflict.incoming.complaintNo||conflict.existing.complaintNo||`Duplicate ${index+1}`;
+      const preferred=duplicateRecordQuality(conflict.incoming)>=duplicateRecordQuality(conflict.existing)?"incoming":"existing";
       return `<section class="duplicate-card"><div class="duplicate-card-title"><strong>${esc(complaint)}</strong><label>Decision
-        <select data-duplicate-choice="${index}"><option value="incoming" selected>Use new report</option><option value="existing">Keep current reviewed data</option></select>
+        <select data-duplicate-choice="${index}"><option value="incoming"${preferred==="incoming"?" selected":""}>Use new report${preferred==="incoming"?" (recommended)":""}</option><option value="existing"${preferred==="existing"?" selected":""}>Keep current reviewed data${preferred==="existing"?" (recommended)":""}</option></select>
       </label></div>${changes.length?`<div class="table-scroll"><table class="duplicate-diff-table"><thead><tr><th>Changed field</th><th>Current data</th><th>New report</th></tr></thead><tbody>
         ${changes.map(([key,label])=>`<tr><td data-label="Changed field">${esc(label)}</td><td data-label="Current data">${esc(conflict.existing[key]||"")}</td><td data-label="New report">${esc(conflict.incoming[key]||"")}</td></tr>`).join("")}
       </tbody></table></div>`:`<p class="hint">No compared field values changed.</p>`}</section>`;
@@ -2859,7 +2973,7 @@ $("extractBtn").onclick=async()=>{
   $("extractStatus").className="status";
   $("extractStatus").textContent="Preparing local extraction...";
   const newRecords=[];
-  let failed=0,processed=0,cancelled=false,fatalError=null;
+  let failed=0,processed=0,skipped=0,cancelled=false,fatalError=null;
   try {
     for (let fileIndex=0;fileIndex<files.length;fileIndex++) {
       assertExtractionActive();
@@ -2871,7 +2985,9 @@ $("extractBtn").onclick=async()=>{
         const item=expanded[itemIndex];
         $("extractQueueStatus").textContent=`Processing ${fileIndex+1} of ${files.length}: ${item.name}`;
         try {
-          newRecords.push(...await extractMany(item.name,item.buffer));
+          const extracted=await extractMany(item.name,item.buffer);
+          if (!extracted.length) skipped++;
+          else newRecords.push(...extracted);
         } catch(err) {
           if (err.name==="AbortError") throw err;
           newRecords.push(extractionErrorRecord(item.name,err));
@@ -2918,6 +3034,7 @@ $("extractBtn").onclick=async()=>{
     if (added) parts.push(`added ${added}`);
     if (updated) parts.push(`${pendingDuplicateConflicts.length} repeated complaint${pendingDuplicateConflicts.length===1?"":"s"} awaiting review`);
     if (failed) parts.push(`${failed} failed`);
+    if (skipped) parts.push(`${skipped} blank/non-report template${skipped===1?"":"s"} skipped`);
     if (fatalError) parts.push(fatalError.message);
     if (cancelled) parts.push("cancelled safely");
     $("extractQueueStatus").textContent=`${processed} report${processed===1?"":"s"} processed${cancelled?" before cancellation":""}.`;
@@ -2976,9 +3093,16 @@ $("buildBtn").onclick=async()=>{
     return;
   }
   $("buildStatus").className="status";
-  $("buildStatus").textContent="Building workbook...";
+  $("buildStatus").textContent="Building workbook locally...";
+  $("buildBtn").disabled=true;
+  $("buildProgressWrap").hidden=false;
+  $("buildProgress").value=0;
+  $("buildQueueStatus").textContent="Preparing Excel sheets...";
   try {
-    const out=await buildUpdatedWorkbook();
+    const out=await buildUpdatedWorkbook(({label,current,total,percent})=>{
+      $("buildProgress").value=percent;
+      $("buildQueueStatus").textContent=`${label} (${current}/${total})`;
+    });
     const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -2999,6 +3123,8 @@ $("buildBtn").onclick=async()=>{
   } catch(err) {
     $("buildStatus").className="status bad";
     $("buildStatus").textContent=err.message;
+  } finally {
+    $("buildBtn").disabled=false;
   }
 };
 

@@ -54,7 +54,13 @@ The Excel file is generated locally in the browser and downloaded back to the us
 - Outlook `.msg` extraction in the browser
 - ZIP containing PDF/MSG
 - Per-field extraction validation with confidence, report page and source-text evidence before export
+- The complete validation/source-evidence panel and each individual case can be folded for a cleaner review screen
+- Clearly numbered multi-complaint reports are separated into one complaint/lot row per case while retaining shared evidence
 - Sequential large-file processing with live progress and a safe cancel button to keep the page responsive
+- Step-by-step Excel creation progress for large multi-sheet exports
+- Blank complaint-form templates are skipped instead of creating empty complaint rows
+- Common PDF split-word errors, filename country tags, and overly long symptom labels are normalized before review
+- Re-importing an app-generated workbook replaces managed rows cleanly instead of duplicating the exported tables
 - Repeated-complaint comparison showing current and newly extracted values before the user chooses which version to keep
 - Responsive iPhone card layout for complaint and structured-test review
 - Add reports in later selections without replacing earlier extracted complaints

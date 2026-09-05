@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=25" />
+  <link rel="stylesheet" href="./styles.css?v=26" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -118,6 +118,10 @@
         </div>
       </fieldset>
       <button id="buildBtn" class="primary">Create Excel file</button>
+      <div id="buildProgressWrap" class="extraction-progress" hidden>
+        <progress id="buildProgress" max="100" value="0" aria-label="Excel creation progress"></progress>
+        <span id="buildQueueStatus"></span>
+      </div>
       <div id="buildStatus" class="status"></div>
     </section>
     </div>
@@ -255,6 +259,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=50"></script>
+  <script type="module" src="./app.js?v=62"></script>
 </body>
 </html>
