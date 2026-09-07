@@ -30,7 +30,7 @@
     <div id="extractView" class="app-view">
     <section class="panel">
       <h2>1. Load an existing Excel workbook (optional)</h2>
-      <p class="hint">Skip this step to create a brand-new Excel workbook. If selected, your workbook is read locally by your browser.</p>
+      <p class="hint">Load Excel to fill the Overview, Investigation and Tests &amp; Root Cause review tabs, then add final reports to expand or update the cases. Skip this step to start a new workbook. Files are read locally.</p>
       <input id="excelFile" type="file" accept=".xlsx" />
       <div id="excelStatus" class="status"></div>
     </section>
@@ -63,9 +63,9 @@
         </div>
       </div>
       <nav class="review-tabs" aria-label="Extracted information groups">
-        <button type="button" class="review-tab-button active" data-review-tab="overview"><span class="review-tab-number">1</span><span>Overview</span></button>
-        <button type="button" class="review-tab-button" data-review-tab="investigation"><span class="review-tab-number">2</span><span>Investigation</span></button>
-        <button type="button" class="review-tab-button" data-review-tab="evidence"><span class="review-tab-number">3</span><span>Tests &amp; root cause</span></button>
+        <button type="button" class="review-tab-button active" data-review-tab="overview"><span class="review-tab-number">1.</span> <span>Overview</span></button>
+        <button type="button" class="review-tab-button" data-review-tab="investigation"><span class="review-tab-number">2.</span> <span>Investigation</span></button>
+        <button type="button" class="review-tab-button" data-review-tab="evidence"><span class="review-tab-number">3.</span> <span>Tests &amp; root cause</span></button>
       </nav>
       <div id="draftStatus" class="status"></div>
       <div id="records"></div>
@@ -263,6 +263,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=65"></script>
+  <script type="module" src="./app.js?v=66"></script>
 </body>
 </html>

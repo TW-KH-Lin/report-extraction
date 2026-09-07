@@ -2923,37 +2923,128 @@ function historyTable(rows) {
   </tbody></table>`;
 }
 
+function reviewRecordsFromSheets(sheets,fileName) {
+  const cases=new Map();
+  const authoritativeFields=new Map();
+  const aliases={
+    complaintNo:SUMMARY_ALIASES.complaintNo,lot:SUMMARY_ALIASES.lot,customerCompany:SUMMARY_ALIASES.customer,
+    materialNo:SUMMARY_ALIASES.materialNo,membraneType:["membrane type","product family"],
+    resultStatus:["final result status","result status","complaint status"],
+    standardizedSymptoms:SUMMARY_ALIASES.standardizedSymptoms,problem:["problem","formal issue description","issue description","reason"],
+    customerReportedFailure:["customer reported failure","formal issue description"],
+    assaysApplied:["tests performed","tests assays applied"],mrfrAreas:["mr fr area s","mr fr areas","mr fr s"],
+    rollsImplicated:SUMMARY_ALIASES.rollsImplicated,samplesReceived:SUMMARY_ALIASES.samplesReceived,
+    complaintRegisteredDate:SUMMARY_ALIASES.registeredDate,reportDate:SUMMARY_ALIASES.reportDate,daysToReport:SUMMARY_ALIASES.days,
+    rootCauseConclusion:["conclusion of root cause analysis","root cause analysis conclusion","final assessment root cause"],
+    sourceGroup:["source group"],sampleDetails:["sample details"],productDescription:["product description"]
+  };
+  const testAliases={name:["standard test"],sampleSource:["sample source"],sampleId:["sample id"],purpose:["purpose","standard purpose"],
+    method:["method","standard method"],result:["result source","result"],outcome:["outcome"],withinSpec:["within spec"],
+    issueObserved:["issue observed"],sourcePage:["source page"],conditions:["conditions","case specific conditions source detail"]};
+  const priority=[REVIEW_OVERVIEW_SHEET,REVIEW_INVESTIGATION_SHEET,REVIEW_ROOT_CAUSE_SHEET,COMPLAINT_SUMMARY_SHEET,...CATEGORY_SHEETS,EVIDENCE_SHEET];
+  const rank=name=>priority.includes(name)?priority.indexOf(name):priority.length;
+  for (const [name,matrix] of [...sheets].sort((a,b)=>rank(a[0])-rank(b[0]))) {
+    if (name===SUMMARY_SHEET) continue;
+    const headerIndex=detectComplaintHeaderRow(matrix);
+    if (headerIndex<0) continue;
+    const headers=(matrix[headerIndex]||[]).map(normalizeHeader);
+    const testSheet=headers.includes("standard test");
+    let carriedId="";
+    const rows=objectsFromMatrix(matrix,headerIndex);
+    for (const row of rows) {
+      let id=valueByAliases(row,aliases.complaintNo);
+      if (!id && testSheet) id=carriedId;
+      if (!id) continue;
+      carriedId=id;
+      const key=normalizeComplaintId(id);
+      if (!cases.has(key)) cases.set(key,{sourceFile:fileName,sourceType:"xlsx",complaintNo:id,testEvidence:[],rawText:"",warnings:"Imported from Excel; verify against the original report when needed.",_organizedReviewVersion:6});
+      const record=cases.get(key);
+      if (!authoritativeFields.has(key)) authoritativeFields.set(key,new Set());
+      const fixed=authoritativeFields.get(key);
+      for (const [field,keys] of Object.entries(aliases)) {
+        if (fixed.has(field)) continue;
+        const value=valueByAliases(row,keys);
+        const authoritative=[REVIEW_OVERVIEW_SHEET,REVIEW_INVESTIGATION_SHEET,REVIEW_ROOT_CAUSE_SHEET].includes(name)
+          && keys.some(alias=>headers.includes(alias));
+        if (authoritative) {record[field]=value;fixed.add(field);}
+        else if (!String(record[field]??"").trim() && value) record[field]=value;
+      }
+      if (!record.resultStatus && !testSheet) record.resultStatus=valueByAliases(row,SUMMARY_ALIASES.result);
+      const source=`${name}: ${Object.entries(row).filter(([,v])=>displayCellValue(v)).map(([k,v])=>`${k}: ${displayCellValue(v)}`).join("; ")}`;
+      if (!record.rawText.includes(source)) record.rawText+=`${source}\n`;
+      if (testSheet) {
+        const test=Object.fromEntries(Object.entries(testAliases).map(([field,keys])=>[field,valueByAliases(row,keys)]));
+        if (test.name || test.result || test.method) {
+          test.name=canonicalTestName(test.name);
+          if (!record.testEvidence.some(existing=>JSON.stringify(existing)===JSON.stringify(test))) record.testEvidence.push(test);
+        }
+      }
+    }
+  }
+  for (const record of cases.values()) {
+    record.productFamily=normalizedProductFamily(record.materialNo,record.membraneType);
+    record.membraneType=record.productFamily||record.membraneType||"";
+    for (const field of ["complaintRegisteredDate","reportDate"]) {
+      let value=record[field]||"";
+      if (/^\d{5}(?:\.\d+)?$/.test(value)) value=new Date(Date.UTC(1899,11,30)+Number(value)*86400000);
+      record[field]=isoDate(value);
+    }
+    const days=daysBetweenDates(record.complaintRegisteredDate,record.reportDate);
+    if (days!=="") record.daysToReport=days;
+    record.sourceGroup=CATEGORY_SHEETS.includes(record.sourceGroup)?record.sourceGroup:/^ongoing$/i.test(record.resultStatus)?"Ongoing - Email":"Final Reports";
+    if (!record.assaysApplied) record.assaysApplied=[...new Set(record.testEvidence.map(test=>test.name).filter(Boolean))].join("; ");
+    record.assaysApplied=testsPerformedBulletText(record.assaysApplied);
+  }
+  return [...cases.values()];
+}
+
 async function handleWorkbookSelection(file) {
   if (!file) return;
-  workbookBuffer=await file.arrayBuffer();
-  workbookFileName=file.name;
-  summaryDataset=[];
+  if (extractionRunning || pendingDuplicateConflicts.length) {
+    $("excelStatus").textContent="Finish extraction and apply duplicate choices before loading another workbook.";
+    return;
+  }
+  $("excelFile").disabled=true;
+  $("extractBtn").disabled=true;
+  $("buildBtn").disabled=true;
+  $("excelStatus").textContent="Loading workbook into the three review tabs...";
   try {
-    const wb=await loadWorkbook(workbookBuffer.slice(0));
-    workbookMode="standard";
-    setReviewProfiles(reviewProfilesFromWorkbook(wb));
+    const buffer=await file.arrayBuffer();
+    let sheets,profiles,mode;
+    try {
+      const wb=await loadWorkbook(buffer.slice(0));
+      sheets=wb.worksheets.map(ws=>[ws.name,worksheetMatrix(ws)]);
+      profiles=reviewProfilesFromWorkbook(wb);
+      mode="standard";
+    } catch(error) {
+      if (!await isValidXlsxContainer(buffer)) throw error;
+      const reference=await readReferenceWorkbook(buffer.slice(0));
+      sheets=Object.entries(reference);
+      profiles=reviewProfilesFromReferenceSheets(reference);
+      mode="reference-readonly";
+    }
+    const imported=reviewRecordsFromSheets(sheets,file.name);
+    syncRecordsFromDom();
+    let added=0;
+    for (const incoming of imported) {
+      const index=matchingRecordIndex(incoming);
+      if (index<0) {records.push(incoming);added++;}
+      else if (duplicateFieldChanges(records[index],incoming).length || JSON.stringify(records[index].testEvidence||[])!==JSON.stringify(incoming.testEvidence||[])) {
+        pendingDuplicateConflicts.push({existingIndex:index,existing:structuredClone(records[index]),incoming});
+      }
+    }
+    workbookBuffer=buffer;workbookFileName=file.name;workbookMode=mode;summaryDataset=[];
+    setReviewProfiles(profiles);
+    renderDuplicateReview();
     for (const id of ["excelStatus","summaryExcelStatus"]) {
       $(id).className="status good";
-      $(id).textContent=`Loaded ${file.name} (${wb.worksheets.length} sheets).`;
+      $(id).textContent=`Loaded ${file.name} (${sheets.length} sheets). ${added} complaint(s) added to the three review tabs; ${pendingDuplicateConflicts.length} duplicate(s) awaiting your choice.${imported.length?" You can now add final reports.":" No complaint rows with recognizable headers were found."}`;
     }
   } catch(err) {
-    if (await isValidXlsxContainer(workbookBuffer)) {
-      workbookMode="reference-readonly";
-      const sheets=await readReferenceWorkbook(workbookBuffer.slice(0));
-      setReviewProfiles(reviewProfilesFromReferenceSheets(sheets));
-      for (const id of ["excelStatus","summaryExcelStatus"]) {
-        $(id).className="status good";
-        $(id).textContent=`Loaded ${file.name} as a protected reference. The app will read it locally and leave the original unchanged.`;
-      }
-    } else {
-      workbookBuffer=null;
-      workbookFileName="";
-      setReviewProfiles([]);
-      for (const id of ["excelStatus","summaryExcelStatus"]) {
-        $(id).className="status bad";
-        $(id).textContent=`Could not read workbook: ${err.message}`;
-      }
-    }
+    $("excelStatus").className="status bad";
+    $("excelStatus").textContent=`Could not read workbook: ${err.message}. Current data was kept.`;
+  } finally {
+    $("excelFile").disabled=false;$("extractBtn").disabled=false;$("buildBtn").disabled=false;
   }
 }
 
@@ -2990,11 +3081,16 @@ const DUPLICATE_COMPARE_FIELDS = [
   ["standardizedSymptoms","Standardized Symptom(s)"],["customerReportedFailure","Customer Reported Failure"],
   ["assaysApplied","Tests Performed"],["mrfrAreas","MR-FR Area(s)"],
   ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"],
-  ["rootCauseConclusion","Conclusion of Root Cause Analysis"],["reportDate","Report Date"]
+  ["rootCauseConclusion","Conclusion of Root Cause Analysis"],["complaintRegisteredDate","Date Registered"],["reportDate","Report Date"],
+  ["testEvidence","Structured Test Evidence"]
 ];
 
+function duplicateDisplayValue(record,key) {
+  return key==="testEvidence"?JSON.stringify(record.testEvidence||[],null,2):String(record[key]??"").trim();
+}
+
 function duplicateFieldChanges(existing,incoming) {
-  return DUPLICATE_COMPARE_FIELDS.filter(([key])=>String(existing[key]||"").trim()!==String(incoming[key]||"").trim());
+  return DUPLICATE_COMPARE_FIELDS.filter(([key])=>duplicateDisplayValue(existing,key)!==duplicateDisplayValue(incoming,key));
 }
 
 function duplicateRecordQuality(record) {
@@ -3024,11 +3120,11 @@ function renderDuplicateReview() {
     ${pendingDuplicateConflicts.map((conflict,index)=>{
       const changes=duplicateFieldChanges(conflict.existing,conflict.incoming);
       const complaint=conflict.incoming.complaintNo||conflict.existing.complaintNo||`Duplicate ${index+1}`;
-      const preferred=duplicateRecordQuality(conflict.incoming)>=duplicateRecordQuality(conflict.existing)?"incoming":"existing";
+      const preferred=conflict.incoming.sourceType==="xlsx"?"existing":duplicateRecordQuality(conflict.incoming)>=duplicateRecordQuality(conflict.existing)?"incoming":"existing";
       return `<section class="duplicate-card"><div class="duplicate-card-title"><strong>${esc(complaint)}</strong><label>Decision
-        <select data-duplicate-choice="${index}"><option value="incoming"${preferred==="incoming"?" selected":""}>Use new report${preferred==="incoming"?" (recommended)":""}</option><option value="existing"${preferred==="existing"?" selected":""}>Keep current reviewed data${preferred==="existing"?" (recommended)":""}</option></select>
+        <select data-duplicate-choice="${index}"><option value="incoming"${preferred==="incoming"?" selected":""}>Use new data${preferred==="incoming"?" (recommended)":""}</option><option value="existing"${preferred==="existing"?" selected":""}>Keep current reviewed data${preferred==="existing"?" (recommended)":""}</option></select>
       </label></div>${changes.length?`<div class="table-scroll"><table class="duplicate-diff-table"><thead><tr><th>Changed field</th><th>Current data</th><th>New report</th></tr></thead><tbody>
-        ${changes.map(([key,label])=>`<tr><td data-label="Changed field">${esc(label)}</td><td data-label="Current data">${esc(conflict.existing[key]||"")}</td><td data-label="New report">${esc(conflict.incoming[key]||"")}</td></tr>`).join("")}
+        ${changes.map(([key,label])=>`<tr><td data-label="Changed field">${esc(label)}</td><td data-label="Current data">${esc(duplicateDisplayValue(conflict.existing,key))}</td><td data-label="New data">${esc(duplicateDisplayValue(conflict.incoming,key))}</td></tr>`).join("")}
       </tbody></table></div>`:`<p class="hint">No compared field values changed.</p>`}</section>`;
     }).join("")}`;
   $("applyDuplicateBtn").onclick=()=>{

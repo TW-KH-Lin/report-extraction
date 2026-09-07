@@ -50,6 +50,9 @@ The Excel file is generated locally in the browser and downloaded back to the us
 
 ## Current features
 
+- Loading an Excel workbook fills the three editable review tabs; rows are joined by complaint number and individual test evidence is restored from the worksheets
+- Add final reports after Excel import to expand the review tables; repeated cases use duplicate review before replacement, and importing another workbook preserves current edits until a duplicate choice is applied
+
 - Samples Received preserves the reported quantity and form (for example, rolls, membrane pieces or several test strips); unspecified units are marked, and received dates are excluded from sample counts
 - Complaint Investigation includes Membrane Type before MR-FR Area(s); Tests & Root Cause and its structured evidence table include Membrane Type before Sample Source
 
