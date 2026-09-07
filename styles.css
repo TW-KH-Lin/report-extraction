@@ -233,13 +233,14 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table.review-overview th:nth-child(10) { width:10%; }
 .organized-review-table.review-overview th:nth-child(11) { width:7%; }
 .organized-review-table.review-investigation { width:100%; min-width:0; }
-.organized-review-table.review-investigation col.field-standardizedSymptoms { width:10%; }
-.organized-review-table.review-investigation col.field-customerReportedFailure { width:16%; }
-.organized-review-table.review-investigation col.field-assaysApplied { width:14%; }
-.organized-review-table.review-investigation col.field-mrfrAreas { width:9%; }
-.organized-review-table.review-investigation col.field-rollsImplicated,
-.organized-review-table.review-investigation col.field-samplesReceived { width:6%; }
-.organized-review-table.review-investigation col.field-action { width:8%; }
+.organized-review-table.review-investigation col.field-standardizedSymptoms { width:9%; }
+.organized-review-table.review-investigation col.field-customerReportedFailure { width:14%; }
+.organized-review-table.review-investigation col.field-assaysApplied { width:12%; }
+.organized-review-table.review-investigation col.field-membraneType { width:6%; }
+.organized-review-table.review-investigation col.field-mrfrAreas { width:8%; }
+.organized-review-table.review-investigation col.field-rollsImplicated { width:5%; }
+.organized-review-table.review-investigation col.field-samplesReceived { width:9%; }
+.organized-review-table.review-investigation col.field-action { width:6%; }
 .organized-review-table.review-evidence { width:100%; min-width:0; }
 .organized-review-table.review-evidence col.field-rootCauseConclusion { width:59%; }
 .organized-review-table.review-evidence col.field-action { width:10%; }

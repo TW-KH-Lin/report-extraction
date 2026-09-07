@@ -50,6 +50,9 @@ The Excel file is generated locally in the browser and downloaded back to the us
 
 ## Current features
 
+- Samples Received preserves the reported quantity and form (for example, rolls, membrane pieces or several test strips); unspecified units are marked, and received dates are excluded from sample counts
+- Complaint Investigation includes Membrane Type before MR-FR Area(s); Tests & Root Cause and its structured evidence table include Membrane Type before Sample Source
+
 - New workbooks default to five focused worksheets: Complaint Overview, Complaint Investigation, Tests & Root Cause, Complaint Summary, and Lot & Symptom Summary
 - Complaint Summary contains 16 essential columns; duplicate family, problem-type, quality-note and source-group columns are omitted from this compact sheet
 - Nine legacy/detailed worksheets remain available in the collapsed optional export group; **Tick all** includes all 14 worksheets

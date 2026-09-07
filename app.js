@@ -45,10 +45,10 @@ const REVIEW_OVERVIEW_HEADERS = [
 ];
 const REVIEW_INVESTIGATION_HEADERS = [
   "Complaint Number","Lot Number","Customer","Standardized Symptom(s)","Customer Reported Failure",
-  "Tests Performed","MR-FR Area(s)","Rolls Implicated","Samples Received"
+  "Tests Performed","Membrane Type","MR-FR Area(s)","Rolls Implicated","Samples Received"
 ];
 const REVIEW_ROOT_CAUSE_HEADERS = [
-  "Complaint Number","Lot Number","Customer","Standard Test","Sample Source","Sample ID","Purpose","Method",
+  "Complaint Number","Lot Number","Customer","Standard Test","Membrane Type","Sample Source","Sample ID","Purpose","Method",
   "Result","Outcome","Within Spec?","Issue Observed?","Source Page","Conditions","Conclusion of Root Cause Analysis"
 ];
 const MANAGED_SHEETS = [
@@ -761,6 +761,25 @@ function isBlankComplaintTemplate(text="") {
     && !/\b(?:Comp\s*-\s*\d{6,10}|13\d{8}|1UN(?:14|95|11|18)[A-Z0-9]+)\b/i.test(source);
 }
 
+function receivedSampleDescription(text) {
+  // Read the complete value inside this form field, never the adjacent received date.
+  const field = text.match(/Number\s+of\s+samples\s+received\s*[:#]?\s*([\s\S]{0,400}?)(?=\s*Date\s+(?:samples|complaint)|\s*Issue\s+description|\s*Complaint\s+status|$)/i);
+  if (field) return cleanBlock(field[1]).replace(/\s+/g," ").trim();
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    if (/\bdate\s+(?:samples\s+)?received/i.test(line)) continue;
+    const match = line.match(/^\s*Samples\s+received\s*[:#]?\s*(.+)$/i);
+    if (match) return cleanBlock(match[1]).trim();
+  }
+  return "";
+}
+
+function sampleReceivedValue(description) {
+  const value=String(description||"").trim();
+  // Preserve reported quantities and forms; no roll unit is inferred from implicated rolls.
+  return /^\d+(?:[.,]\d+)?$/.test(value)?`${value} (unit not stated)`:value;
+}
+
 function parseRecord(text, filename, sourceType) {
   const rawSourceText=text;
   text=repairCommonPdfSpacing(text);
@@ -802,13 +821,8 @@ function parseRecord(text, filename, sourceType) {
     /Total\s+units\s+implicated\s*[:#]?\s*(\d+)\s*rolls?/i,
     /(?:Number|Total)\s+of\s+rolls?\s+implicated\s*[:#]?\s*(\d+)/i
   ]);
-  const samplesReceived = firstMatch(text, [
-    /Number\s+of\s+samples\s+received\s*[:#]?\s*(\d+)/i,
-    /Samples\s+received\s*[:#]?\s*(\d+)/i
-  ]);
-  let sampleDetails = firstMatch(text, [
-    /Number\s+of\s+samples\s+received\s*[:#]?\s*([\s\S]{1,100}?)(?=\s+Date\s+(?:samples|complaint)|\s+Issue\s+description|\n)/i
-  ]);
+  let sampleDetails = receivedSampleDescription(text);
+  const samplesReceived = sampleReceivedValue(sampleDetails);
   const receivedIdentifiers=firstMatch(text, [
     /returned\s+\d+\s+(?:pieces|samples)[\s\S]{0,180}?\(([#\d\s,;and]+)(?:identification|customer|\))/i
   ]).replace(/\s+/g," ");
@@ -1023,7 +1037,12 @@ function splitNumberedPdfCases(text,base) {
   while ((match=lotRe.exec(early))) assignMarkedValue(lotByCase,match[2],match[1]);
   const rollsByCase=new Map();
   const rollsRe=/\b([0-9]+)\s*rolls?\s*\(([0-9+,&;\s-]+)\)/gi;
-  while ((match=rollsRe.exec(early))) assignMarkedValue(rollsByCase,match[2],match[1]);
+  const implicatedArea=early.match(/Total\s+units\s+implicated\s*([\s\S]*?)(?=Number\s+of\s+samples\s+received|Date\s+complaint)/i)?.[1]||"";
+  while ((match=rollsRe.exec(implicatedArea))) assignMarkedValue(rollsByCase,match[2],match[1]);
+  const samplesByCase=new Map();
+  const samplesArea=receivedSampleDescription(early);
+  const sampleRe=/([^()]+?)\s*\(([0-9+,&;\s-]+)\)/g;
+  while ((match=sampleRe.exec(samplesArea))) assignMarkedValue(samplesByCase,match[2],sampleReceivedValue(match[1]));
   const dateByCase=new Map();
   const dateRe=/(\d{1,2}\s*[-./]\s*[A-Za-z]{3,9}\s*[-./]\s*\d{2,4})\s*\(([0-9+,&;\s-]+)\)/gi;
   while ((match=dateRe.exec(early))) assignMarkedValue(dateByCase,match[2],normalizeExtractedDate(match[1]));
@@ -1054,6 +1073,7 @@ function splitNumberedPdfCases(text,base) {
     return {
       ...structuredClone(base),complaintNo,materialNo,lot,problem,formalProblem:problem,
       customerReportedFailure:problem,rollsImplicated:rollsByCase.get(index)||base.rollsImplicated,
+      samplesReceived:samplesByCase.get(index)||base.samplesReceived,
       complaintRegisteredDate,daysToReport:daysBetweenDates(complaintRegisteredDate,base.reportDate),resultStatus,
       productFamily:productFamily(materialNo),membraneType:membraneType(materialNo,base.productDescription),
       standardizedSymptoms:classification.standardizedSymptoms,problemTypes:classification.problemTypes,lfaRelevance:classification.lfaRelevance,
@@ -1248,8 +1268,8 @@ const ORGANIZED_REVIEW_TABS = {
     fields:[
       ["complaintNo","Complaint Number","compact"],["lot","Lot Number"],["customerCompany","Customer","compact"],
       ["standardizedSymptoms","Standardized Symptom(s)","compact"],["customerReportedFailure","Customer Reported Failure","long"],
-      ["assaysApplied","Tests Performed","long"],["mrfrAreas","MR-FR Area(s)","compact"],
-      ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received"]
+      ["assaysApplied","Tests Performed","long"],["membraneType","Membrane Type"],["mrfrAreas","MR-FR Area(s)","compact"],
+      ["rollsImplicated","Rolls Implicated"],["samplesReceived","Samples Received","compact"]
     ]
   },
   evidence:{
@@ -1475,7 +1495,7 @@ function organizedReviewCell(record,index,definition) {
 function renderStructuredEvidenceReview() {
   const fields=[
     ["sharedDetails","","Complaint Details"],
-    ["test","name","Standard Test"],["test","sampleSource","Sample Source"],["test","sampleId","Sample ID"],
+    ["test","name","Standard Test"],["shared","membraneType","Membrane Type"],["test","sampleSource","Sample Source"],["test","sampleId","Sample ID"],
     ["test","purpose","Purpose","long"],["test","method","Method","long"],["test","result","Result","long"],
     ["test","outcome","Outcome"],["test","withinSpec","Within Spec?"],["test","issueObserved","Issue Observed?"],
     ["test","sourcePage","Source Page"],["test","conditions","Conditions","long"]
@@ -1493,7 +1513,7 @@ function renderStructuredEvidenceReview() {
     let value=kind==="shared"?item.record[key]||"":item.test[key]||"";
     if (key==="method") value=testMethodBulletText(value);
     const attrs=`data-record-index="${item.recordIndex}" ${kind==="shared"?`data-evidence-shared="${key}"`:`data-test-index="${item.testIndex}" data-test-field="${key}"`}`;
-    const rowspan=kind==="shared"?` rowspan="${item.record.testEvidence.length}"`:"";
+    const rowspan="";
     return type==="long"
       ?`<td class="evidence-long" data-label="${esc(label)}"${rowspan}><textarea aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs}>${esc(value)}</textarea></td>`
       :`<td data-label="${esc(label)}"${rowspan}><input aria-label="${esc(label)} for test row ${item.testIndex+1}" ${attrs} value="${esc(value)}"></td>`;
@@ -1542,7 +1562,7 @@ function renderRecords() {
   target.querySelectorAll("[data-field],[data-evidence-shared],[data-test-field]").forEach(input=>{
     input.addEventListener("input",()=>{
       const key=input.dataset.evidenceShared||input.dataset.field;
-      if (!["complaintNo","lot","customerCompany"].includes(key)) return;
+      if (!["complaintNo","lot","customerCompany","membraneType"].includes(key)) return;
       const index=Number(input.dataset.recordIndex??input.closest("[data-record-row]")?.dataset.index);
       // Shared fields occur twice in the evidence tab; keep both editors in sync
       // before reading the DOM so an older copy cannot overwrite the user's edit.
@@ -2339,7 +2359,7 @@ function formatSheet(ws, hasSource=false) {
   ws.pageSetup.printTitlesRow="1:1";
   const widthByHeader={
     "Source Group":16,"Lot":11,"Product Family":13,"Membrane Type":13,"Customer Company":24,"Rolls Implicated":10,
-    "Samples Received":10,"Final Roll(s)":15,"Master Roll(s)":15,"MR-FR Area(s)":23,
+    "Samples Received":19,"Final Roll(s)":15,"Master Roll(s)":15,"MR-FR Area(s)":23,
     "Zone(s)":16,"MR-FR (s)":23,
     "Complaint / Notification":19,"Formal Issue Description":24,"Problem":26,"Customer Reported Failure":34,"Tests / Assays Applied":28,
     "Standardized Symptom(s)":22,"Problem Type":22,"LFA Relevance":18,
@@ -2511,6 +2531,7 @@ function recordToInvestigationRow(record) {
     "Standardized Symptom(s)":row["Standardized Symptom(s)"],
     "Customer Reported Failure":row["Customer Reported Failure"],
     "Tests Performed":row["Tests / Assays Applied"],
+    "Membrane Type":row["Membrane Type"],
     "MR-FR Area(s)":row["MR-FR Area(s)"],
     "Rolls Implicated":row["Rolls Implicated"],
     "Samples Received":row["Samples Received"]
@@ -2522,7 +2543,7 @@ function recordToRootCauseRows(record) {
   const tests=record.testEvidence?.length?record.testEvidence:[{}];
   return tests.map(test=>({
     "Complaint Number":row["Complaint / Notification"],"Lot Number":row["Lot"],"Customer":row["Customer Company"],
-    "Standard Test":canonicalTestName(test.name),"Sample Source":test.sampleSource||"","Sample ID":test.sampleId||"",
+    "Standard Test":canonicalTestName(test.name),"Membrane Type":row["Membrane Type"],"Sample Source":test.sampleSource||"","Sample ID":test.sampleId||"",
     "Purpose":test.purpose||"","Method":testMethodBulletText(test.method),"Result":test.result||"","Outcome":test.outcome||"",
     "Within Spec?":test.withinSpec||"","Issue Observed?":test.issueObserved||"","Source Page":test.sourcePage||"",
     "Conditions":test.conditions||"","Conclusion of Root Cause Analysis":row["Root Cause Analysis Conclusion"]
