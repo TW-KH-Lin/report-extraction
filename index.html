@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Extraction</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
-  <link rel="stylesheet" href="./styles.css?v=29" />
+  <link rel="stylesheet" href="./styles.css?v=30" />
   <script src="./vendor/pdf.min.js"></script>
   <script src="./vendor/jszip.min.js"></script>
   <script src="./vendor/exceljs.min.js"></script>
@@ -67,6 +67,13 @@
         <button type="button" class="review-tab-button" data-review-tab="investigation"><span class="review-tab-number">2.</span> <span>Investigation</span></button>
         <button type="button" class="review-tab-button" data-review-tab="evidence"><span class="review-tab-number">3.</span> <span>Tests &amp; root cause</span></button>
       </nav>
+      <div class="review-filter-bar" role="group" aria-label="Filter review cases">
+        <label for="reviewFamily">CN type<select id="reviewFamily"><option value="">All CN types</option><option>CN95</option><option>CN110</option><option>CN140</option><option>CN140ub</option><option>CN180</option></select></label>
+        <label for="reviewKeyword">Keyword<input id="reviewKeyword" type="search" placeholder="Complaint, lot, customer, symptom or test…" /></label>
+        <button id="clearReviewFilters" type="button" class="secondary">Clear filters</button>
+        <span id="reviewFilterCount" role="status" aria-live="polite">Showing 0 of 0 cases</span>
+      </div>
+      <p class="hint review-filter-hint">Filters apply to all three review tabs and their source evidence. Multiple keywords must all match. Save and Excel export still include all loaded cases.</p>
       <div id="draftStatus" class="status"></div>
       <div id="records"></div>
       <div class="lots-section">
@@ -263,6 +270,6 @@
     <strong>1UN18 → CN180</strong>
   </footer>
 
-  <script type="module" src="./app.js?v=66"></script>
+  <script type="module" src="./app.js?v=67"></script>
 </body>
 </html>

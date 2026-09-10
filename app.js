@@ -1370,15 +1370,16 @@ function validateRecord(record) {
 }
 
 function renderValidationPanel() {
-  const reviewed=records.map(validateRecord);
+  const visible=visibleReviewRecords();
+  const reviewed=visible.map(({record})=>validateRecord(record));
   const totalFields=reviewed.reduce((sum,item)=>sum+item.fields.length,0);
   const high=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="High").length,0);
   const medium=reviewed.reduce((sum,item)=>sum+item.fields.filter(field=>field.confidence==="Medium").length,0);
   const review=totalFields-high-medium;
   return `<section id="validationPanel" class="validation-panel"><details class="validation-master"><summary class="validation-title"><span class="validation-title-copy"><strong>Extraction validation &amp; source evidence</strong><span>Expand to check report page and source text before export.</span></span>
     <span class="validation-counts"><span class="confidence-high">High ${high}</span><span class="confidence-medium">Medium ${medium}</span><span class="confidence-review">Review ${review}</span></span></summary>
-    <div class="validation-cases">${records.map((record,index)=>{
-      const result=reviewed[index];
+    <div class="validation-cases">${visible.map(({record,index},position)=>{
+      const result=reviewed[position];
       const title=record.complaintNo||record.sourceFile||`Complaint ${index+1}`;
       return `<details class="validation-case"><summary><span>${esc(title)}</span><span>${result.complete}/${result.required} required fields · ${result.issues.length} note${result.issues.length===1?"":"s"}</span></summary>
         ${result.issues.length?`<ul class="validation-issues">${result.issues.map(issue=>`<li>${esc(issue)}</li>`).join("")}</ul>`:`<p class="validation-ok">All required fields are present.</p>`}
@@ -1500,7 +1501,7 @@ function renderStructuredEvidenceReview() {
     ["test","outcome","Outcome"],["test","withinSpec","Within Spec?"],["test","issueObserved","Issue Observed?"],
     ["test","sourcePage","Source Page"],["test","conditions","Conditions","long"]
   ];
-  const rows=records.flatMap((record,recordIndex)=>(record.testEvidence||[]).map((test,testIndex)=>({record,test,recordIndex,testIndex})));
+  const rows=visibleReviewRecords().flatMap(({record,index:recordIndex})=>(record.testEvidence||[]).map((test,testIndex)=>({record,test,recordIndex,testIndex})));
   const cell=(item,definition)=>{
     const [kind,key,label,type="text"]=definition;
     if (kind==="sharedDetails") {
@@ -1524,21 +1525,42 @@ function renderStructuredEvidenceReview() {
       :`<p class="hint">No structured test evidence was extracted for the current complaints.</p>`}</section>`;
 }
 
+function visibleReviewRecords() {
+  const normalize=value=>String(value??"").normalize("NFKC").toLowerCase();
+  const terms=normalize($("reviewKeyword")?.value).trim().split(/\s+/).filter(Boolean);
+  const family=$("reviewFamily")?.value||"";
+  const keys=[...new Set(Object.values(ORGANIZED_REVIEW_TABS).flatMap(tab=>tab.fields.map(([key])=>key)))];
+  return records.map((record,index)=>({record,index})).filter(({record})=>{
+    const recordFamily=normalizedProductFamily(record.materialNo,record.membraneType||record.productFamily);
+    if (family && recordFamily!==family) return false;
+    const text=normalize([...keys.map(key=>record[key]),record.sourceFile,
+      ...(record.testEvidence||[]).flatMap(test=>Object.values(test))].join("\n"));
+    return terms.every(term=>text.includes(term));
+  });
+}
+
 function renderRecords() {
   const target=$("records");
   const tab=ORGANIZED_REVIEW_TABS[activeReviewTab]||ORGANIZED_REVIEW_TABS.overview;
   records.forEach(prepareRecordForReview);
+  const visible=visibleReviewRecords();
+  if ($("reviewFilterCount")) $("reviewFilterCount").textContent=`Showing ${visible.length} of ${records.length} cases`;
   if (!records.length) {
     target.innerHTML=`<p class="hint">No extracted complaints yet.</p>`;
     renderLotsTable();
     return;
   }
-  target.innerHTML=`${renderValidationPanel()}<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${records.length} complaint${records.length===1?"":"s"} · one complaint per row</span></div>
+  if (!visible.length) {
+    target.innerHTML=`<p class="hint">No cases match these filters. Change the keyword or CN type, or select Clear filters.</p>`;
+    renderLotsTable();
+    return;
+  }
+  target.innerHTML=`${renderValidationPanel()}<div class="organized-review-heading"><strong>${esc(tab.label)}</strong><span>${visible.length} of ${records.length} complaints · one complaint per row</span></div>
     <div class="table-scroll organized-review-scroll"><table class="organized-review-table review-${activeReviewTab}"><colgroup>
       ${tab.fields.map(([key])=>`<col class="field-${key}">`).join("")}<col class="field-action">
     </colgroup><thead><tr>
       ${tab.fields.map(([key,label])=>`<th class="field-${key}">${organizedHeaderHtml(label)}</th>`).join("")}<th>Action<br>&nbsp;</th>
-    </tr></thead><tbody>${records.map((record,index)=>`<tr class="case-tone-${index%4}" data-record-row data-index="${index}">
+    </tr></thead><tbody>${visible.map(({record,index})=>`<tr class="case-tone-${index%4}" data-record-row data-index="${index}">
       ${tab.fields.map(definition=>organizedReviewCell(record,index,definition)).join("")}
       <td class="organized-action" data-label="Action"><button type="button" class="secondary remove-record" data-index="${index}">Remove</button></td>
     </tr>`).join("")}</tbody></table></div>${activeReviewTab==="evidence"?renderStructuredEvidenceReview():""}`;
@@ -3749,6 +3771,15 @@ $("searchFamily").addEventListener("change",()=>{
 });
 $("decisionFamily").addEventListener("change",refreshDecisionSymptomChoices);
 $("decisionSearchBtn").onclick=runDecisionSearch;
+
+for (const [id,event] of [["reviewKeyword","input"],["reviewFamily","change"]]) {
+  $(id).addEventListener(event,()=>{syncRecordsFromDom();renderRecords();});
+}
+$("clearReviewFilters").addEventListener("click",()=>{
+  syncRecordsFromDom();
+  $("reviewKeyword").value="";$("reviewFamily").value="";
+  renderRecords();
+});
 
 document.querySelectorAll("[data-review-tab]").forEach(button=>{
   button.addEventListener("click",()=>{

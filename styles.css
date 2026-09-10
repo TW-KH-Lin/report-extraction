@@ -232,6 +232,13 @@ details pre { max-height: 300px; overflow:auto; white-space:pre-wrap; background
 .organized-review-table.review-overview th:nth-child(9) { width:8%; }
 .organized-review-table.review-overview th:nth-child(10) { width:10%; }
 .organized-review-table.review-overview th:nth-child(11) { width:7%; }
+.review-filter-bar { display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-top:14px; }
+.review-filter-bar label { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.review-filter-bar label[for="reviewKeyword"] { flex:1 1 260px; }
+.review-filter-bar input, .review-filter-bar select { width:100%; min-width:0; box-sizing:border-box; }
+.review-filter-bar #reviewFilterCount { align-self:center; color:#526783; }
+.review-filter-hint { margin:8px 0 12px; }
+@media(max-width:700px) { .review-filter-bar { gap:8px; } .review-filter-bar label { flex-basis:100%; } }
 .organized-review-table.review-investigation { width:100%; min-width:0; }
 .organized-review-table.review-investigation col.field-standardizedSymptoms { width:9%; }
 .organized-review-table.review-investigation col.field-customerReportedFailure { width:14%; }

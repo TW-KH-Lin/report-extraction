@@ -50,6 +50,8 @@ The Excel file is generated locally in the browser and downloaded back to the us
 
 ## Current features
 
+- Shared keyword and CN-family filters across all three review tabs and source/test evidence; filtering changes visibility only and preserves hidden cases for saving and Excel export
+
 - Loading an Excel workbook fills the three editable review tabs; rows are joined by complaint number and individual test evidence is restored from the worksheets
 - Add final reports after Excel import to expand the review tables; repeated cases use duplicate review before replacement, and importing another workbook preserves current edits until a duplicate choice is applied
 
